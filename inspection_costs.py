@@ -696,6 +696,7 @@ def run_inspection_costs_workflow(
         steps=steps,
     )
     print(f"Final scenarios rows: {len(final_scenarios)}")
+    print(final_scenarios.head())
     
     print("Adding cost and benefit columns")
     costed_summary_df = add_cost_benefit_columns(
