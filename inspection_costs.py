@@ -527,7 +527,6 @@ def _import_pyarrow_parquet():
         ) from exc
     return pq, pa
 
-
 def _final_scenarios_arrow_schema(pa):
     return pa.schema(
         [
@@ -550,72 +549,6 @@ def _final_scenarios_arrow_schema(pa):
             ("PLV - Total Diverted Chips Identified", pa.float64()),
         ]
     )
-
-
-def run_inspection_costs_workflow(
-    *,
-    cluster_sizes: Iterable[int] = CLUSTER_SIZES,
-    k_vals: Iterable[int] = K_VALS,
-    n_vals: Iterable[int] = N_VALS,
-    m_vals: Iterable[float] = M_VALS,
-    target_chips: int = TARGET_CHIPS,
-    steps: Optional[Iterable[float]] = MIX_STEPS,
-    phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
-    phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
-    plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
-    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
-) -> dict[str, object]:
-    cluster_sizes = list(cluster_sizes)
-    k_vals = list(k_vals)
-    n_vals = list(n_vals)
-    m_vals = list(m_vals)
-    steps = list(steps) if steps is not None else None
-
-    print("Starting inspection costs workflow")
-    print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
-    detection_lookup_table = build_detection_lookup_table(
-        cluster_sizes=cluster_sizes,
-        K_vals=k_vals,
-        n_vals=n_vals,
-        m_vals=m_vals,
-    )
-    print(f"Detection lookup table rows: {len(detection_lookup_table)}")
-
-    print("Building detailed final scenarios")
-    final_scenarios = build_final_scenarios(
-        cluster_sizes=cluster_sizes,
-        detection_lookup_table=detection_lookup_table,
-        k_vals=k_vals,
-        target_chips=target_chips,
-        steps=steps,
-    )
-    print(f"Final scenarios rows: {len(final_scenarios)}")
-    
-    print("Adding cost and benefit columns")
-    costed_summary_df = add_cost_benefit_columns(
-        summary_df,
-        phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-        phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
-        plv_cost_per_total_chip=plv_cost_per_total_chip,
-        dollars_per_chip_detected=dollars_per_chip_detected,
-    )
-    print("Building long-form efficiency table")
-    efficiency_long_df = build_efficiency_long_df(
-        costed_summary_df,
-        dollars_per_chip_detected=dollars_per_chip_detected,
-    )
-    print("Fitting net benefit model")
-    regression_result = fit_net_benefit_model(efficiency_long_df)
-    print("Inspection costs workflow complete")
-    return {
-        "detection_lookup_table": detection_lookup_table,
-        "final_scenarios": final_scenarios,
-        "summary_df": summary_df,
-        "costed_summary_df": costed_summary_df,
-        "efficiency_long_df": efficiency_long_df,
-        "regression_result": regression_result,
-    }
-
 
 def add_cost_benefit_columns(
     summary_df: pd.DataFrame,
@@ -722,6 +655,70 @@ def fit_net_benefit_model(
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     r_squared = 1.0 if ss_tot == 0 else 1 - (ss_res / ss_tot)
     return LinearRegressionResult(feature_names=tuple(features), coefficients=coefficients, r_squared=r_squared)
+
+def run_inspection_costs_workflow(
+    *,
+    cluster_sizes: Iterable[int] = CLUSTER_SIZES,
+    k_vals: Iterable[int] = K_VALS,
+    n_vals: Iterable[int] = N_VALS,
+    m_vals: Iterable[float] = M_VALS,
+    target_chips: int = TARGET_CHIPS,
+    steps: Optional[Iterable[float]] = MIX_STEPS,
+    phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
+    phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
+    plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
+    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
+) -> dict[str, object]:
+    cluster_sizes = list(cluster_sizes)
+    k_vals = list(k_vals)
+    n_vals = list(n_vals)
+    m_vals = list(m_vals)
+    steps = list(steps) if steps is not None else None
+
+    print("Starting inspection costs workflow")
+    print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
+    detection_lookup_table = build_detection_lookup_table(
+        cluster_sizes=cluster_sizes,
+        K_vals=k_vals,
+        n_vals=n_vals,
+        m_vals=m_vals,
+    )
+    print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+
+    print("Building detailed final scenarios")
+    final_scenarios = build_final_scenarios(
+        cluster_sizes=cluster_sizes,
+        detection_lookup_table=detection_lookup_table,
+        k_vals=k_vals,
+        target_chips=target_chips,
+        steps=steps,
+    )
+    print(f"Final scenarios rows: {len(final_scenarios)}")
+    
+    print("Adding cost and benefit columns")
+    costed_summary_df = add_cost_benefit_columns(
+        summary_df,
+        phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
+        phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
+        plv_cost_per_total_chip=plv_cost_per_total_chip,
+        dollars_per_chip_detected=dollars_per_chip_detected,
+    )
+    print("Building long-form efficiency table")
+    efficiency_long_df = build_efficiency_long_df(
+        costed_summary_df,
+        dollars_per_chip_detected=dollars_per_chip_detected,
+    )
+    print("Fitting net benefit model")
+    regression_result = fit_net_benefit_model(efficiency_long_df)
+    print("Inspection costs workflow complete")
+    return {
+        "detection_lookup_table": detection_lookup_table,
+        "final_scenarios": final_scenarios,
+        "summary_df": summary_df,
+        "costed_summary_df": costed_summary_df,
+        "efficiency_long_df": efficiency_long_df,
+        "regression_result": regression_result,
+    }
 
 if __name__ == "__main__":
     run_inspection_costs_workflow()
