@@ -274,12 +274,23 @@ def run_inspection_costs_workflow(
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
     dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
 ) -> dict[str, object]:
+    cluster_sizes = list(cluster_sizes)
+    k_vals = list(k_vals)
+    n_vals = list(n_vals)
+    m_vals = list(m_vals)
+    steps = list(steps) if steps is not None else None
+
+    print("Starting inspection costs workflow")
+    print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
     detection_lookup_table = build_detection_lookup_table(
         cluster_sizes=cluster_sizes,
         K_vals=k_vals,
         n_vals=n_vals,
         m_vals=m_vals,
     )
+    print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+
+    print("Building detailed final scenarios")
     final_scenarios = build_final_scenarios(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
@@ -287,6 +298,9 @@ def run_inspection_costs_workflow(
         target_chips=target_chips,
         steps=steps,
     )
+    print(f"Final scenarios rows: {len(final_scenarios)}")
+
+    print("Building aggregated scenario summary")
     summary_df = expand_scenarios(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
@@ -294,6 +308,9 @@ def run_inspection_costs_workflow(
         target_chips=target_chips,
         steps=steps,
     )
+    print(f"Summary rows: {len(summary_df)}")
+
+    print("Adding cost and benefit columns")
     costed_summary_df = add_cost_benefit_columns(
         summary_df,
         phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
@@ -301,11 +318,14 @@ def run_inspection_costs_workflow(
         plv_cost_per_total_chip=plv_cost_per_total_chip,
         dollars_per_chip_detected=dollars_per_chip_detected,
     )
+    print("Building long-form efficiency table")
     efficiency_long_df = build_efficiency_long_df(
         costed_summary_df,
         dollars_per_chip_detected=dollars_per_chip_detected,
     )
+    print("Fitting net benefit model")
     regression_result = fit_net_benefit_model(efficiency_long_df)
+    print("Inspection costs workflow complete")
     return {
         "detection_lookup_table": detection_lookup_table,
         "final_scenarios": final_scenarios,
