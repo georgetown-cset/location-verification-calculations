@@ -9,12 +9,18 @@ import numpy as np
 import pandas as pd
 
 
-NOTEBOOK_CLUSTER_SIZES = [8, 10, 100, 1_000, 10_000, 100_000, 200_000]
-NOTEBOOK_K_VALS = [1, 8, 10, 100, 1_000, 10_000, 100_000, 200_000]
-NOTEBOOK_N_VALS = [1, 8, 10, 100, 1_000]
-NOTEBOOK_M_VALS = [0.05]
-NOTEBOOK_TARGET_CHIPS = 2_000_000
-NOTEBOOK_STEPS = np.arange(0, 1.1, 0.1)
+TARGET_CHIPS = 2_000_000
+MIX_STEPS = np.arange(0, 1.1, 0.1)
+PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
+PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
+PLV_COST_PER_TOTAL_CHIP = (11, 125)
+DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
+PLV_BASIS_COLUMN = "Cluster Size (N)"
+NET_BENEFIT_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
+CLUSTER_SIZES = [8, 10, 100, 1000, 10000, 100000, 200000]
+K_VALS = [1, 8, 10, 100, 1000, 10000, 100000, 200000]
+N_VALS = [1, 8, 10, 100, 1000]
+M_VALS = [0.05]
 
 
 def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
@@ -79,11 +85,11 @@ def build_detection_lookup_table(
 
 def build_mix_data(
     cluster_sizes: Iterable[int],
-    target_chips: int = 2_000_000,
+    target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
 ) -> list[list[dict[str, int]]]:
     if steps is None:
-        steps = np.arange(0, 1.1, 0.1)
+        steps = MIX_STEPS
 
     cluster_sizes = list(cluster_sizes)
     valid_mixes: list[list[dict[str, int]]] = []
@@ -146,7 +152,7 @@ def build_final_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
-    target_chips: int = 2_000_000,
+    target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
 ) -> pd.DataFrame:
     mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
@@ -202,7 +208,7 @@ def expand_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
-    target_chips: int = 2_000_000,
+    target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
 ) -> pd.DataFrame:
     mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
@@ -267,16 +273,16 @@ class InspectionCostsWorkflowResult:
 
 def run_inspection_costs_workflow(
     *,
-    cluster_sizes: Iterable[int] = NOTEBOOK_CLUSTER_SIZES,
-    k_vals: Iterable[int] = NOTEBOOK_K_VALS,
-    n_vals: Iterable[int] = NOTEBOOK_N_VALS,
-    m_vals: Iterable[float] = NOTEBOOK_M_VALS,
-    target_chips: int = NOTEBOOK_TARGET_CHIPS,
-    steps: Optional[Iterable[float]] = NOTEBOOK_STEPS,
-    phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = (11, 125),
-    phys_inspection_travel_cost_per_inspection: tuple[float, float] = (2500, 5000),
-    plv_cost_per_total_chip: tuple[float, float] = (11, 125),
-    dollars_per_chip_detected: tuple[float, float] = (1000, 60000),
+    cluster_sizes: Iterable[int] = CLUSTER_SIZES,
+    k_vals: Iterable[int] = K_VALS,
+    n_vals: Iterable[int] = N_VALS,
+    m_vals: Iterable[float] = M_VALS,
+    target_chips: int = TARGET_CHIPS,
+    steps: Optional[Iterable[float]] = MIX_STEPS,
+    phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
+    phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
+    plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
+    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
 ) -> InspectionCostsWorkflowResult:
     detection_lookup_table = build_detection_lookup_table(
         cluster_sizes=cluster_sizes,
@@ -322,11 +328,11 @@ def run_inspection_costs_workflow(
 
 def add_cost_benefit_columns(
     summary_df: pd.DataFrame,
-    phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = (11, 125),
-    phys_inspection_travel_cost_per_inspection: tuple[float, float] = (2500, 5000),
-    plv_cost_per_total_chip: tuple[float, float] = (11, 125),
-    dollars_per_chip_detected: tuple[float, float] = (1000, 60000),
-    plv_basis_column: str = "Cluster Size (N)",
+    phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
+    phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
+    plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
+    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
+    plv_basis_column: str = PLV_BASIS_COLUMN,
 ) -> pd.DataFrame:
     result = summary_df.copy()
     plv_cost_basis = result[plv_basis_column] if plv_basis_column in result.columns else result["Total Clusters in Mix"]
@@ -364,7 +370,7 @@ def add_cost_benefit_columns(
 
 def build_efficiency_long_df(
     summary_df: pd.DataFrame,
-    dollars_per_chip_detected: tuple[float, float] = (1000, 60000),
+    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
 ) -> pd.DataFrame:
     efficiency_long_df = summary_df.melt(
         id_vars=[column for column in summary_df.columns if "Net Benefit" not in column],
@@ -413,7 +419,7 @@ class LinearRegressionResult:
 
 def fit_net_benefit_model(
     efficiency_long_df: pd.DataFrame,
-    feature_columns: Iterable[str] = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value"),
+    feature_columns: Iterable[str] = NET_BENEFIT_FEATURE_COLUMNS,
 ) -> LinearRegressionResult:
     features = list(feature_columns)
     X = efficiency_long_df.loc[:, features].to_numpy(dtype=float)
@@ -425,15 +431,3 @@ def fit_net_benefit_model(
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     r_squared = 1.0 if ss_tot == 0 else 1 - (ss_res / ss_tot)
     return LinearRegressionResult(feature_names=tuple(features), coefficients=coefficients, r_squared=r_squared)
-
-
-cluster_sizes = [8, 10, 100, 1000, 10000, 100000, 200000]
-"""
-N = total records
-n = records tested
-K = number of bad records
-m = probability that the test misses a bad record
-"""
-K_vals = [1, 8, 10, 100, 1000, 10000, 100000, 200000]
-n_vals = [1, 8, 10, 100, 1000]
-m_vals = [0.05]
