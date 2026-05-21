@@ -261,16 +261,6 @@ def expand_scenarios(
     return pd.DataFrame(summary_records)
 
 
-@dataclass(frozen=True)
-class InspectionCostsWorkflowResult:
-    detection_lookup_table: pd.DataFrame
-    final_scenarios: pd.DataFrame
-    summary_df: pd.DataFrame
-    costed_summary_df: pd.DataFrame
-    efficiency_long_df: pd.DataFrame
-    regression_result: LinearRegressionResult
-
-
 def run_inspection_costs_workflow(
     *,
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
@@ -283,7 +273,7 @@ def run_inspection_costs_workflow(
     phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
     dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
-) -> InspectionCostsWorkflowResult:
+) -> dict[str, object]:
     detection_lookup_table = build_detection_lookup_table(
         cluster_sizes=cluster_sizes,
         K_vals=k_vals,
@@ -316,14 +306,14 @@ def run_inspection_costs_workflow(
         dollars_per_chip_detected=dollars_per_chip_detected,
     )
     regression_result = fit_net_benefit_model(efficiency_long_df)
-    return InspectionCostsWorkflowResult(
-        detection_lookup_table=detection_lookup_table,
-        final_scenarios=final_scenarios,
-        summary_df=summary_df,
-        costed_summary_df=costed_summary_df,
-        efficiency_long_df=efficiency_long_df,
-        regression_result=regression_result,
-    )
+    return {
+        "detection_lookup_table": detection_lookup_table,
+        "final_scenarios": final_scenarios,
+        "summary_df": summary_df,
+        "costed_summary_df": costed_summary_df,
+        "efficiency_long_df": efficiency_long_df,
+        "regression_result": regression_result,
+    }
 
 
 def add_cost_benefit_columns(

@@ -103,12 +103,12 @@ class InspectionCostsTests(unittest.TestCase):
             steps=[1.0],
         )
 
-        self.assertEqual(len(result.detection_lookup_table), 1)
-        self.assertEqual(len(result.final_scenarios), 1)
-        self.assertEqual(len(result.summary_df), 1)
-        self.assertIn("Physical - Min Net Benefit", result.costed_summary_df.columns)
-        self.assertIn("Benefit Scenario", result.efficiency_long_df.columns)
-        self.assertIn("R-squared", result.regression_result.as_dict())
+        self.assertEqual(len(result["detection_lookup_table"]), 1)
+        self.assertEqual(len(result["final_scenarios"]), 1)
+        self.assertEqual(len(result["summary_df"]), 1)
+        self.assertIn("Physical - Min Net Benefit", result["costed_summary_df"].columns)
+        self.assertIn("Benefit Scenario", result["efficiency_long_df"].columns)
+        self.assertIn("R-squared", result["regression_result"].as_dict())
 
 
 if __name__ == "__main__":
