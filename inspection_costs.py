@@ -421,3 +421,5 @@ def fit_net_benefit_model(
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     r_squared = 1.0 if ss_tot == 0 else 1 - (ss_res / ss_tot)
     return LinearRegressionResult(feature_names=tuple(features), coefficients=coefficients, r_squared=r_squared)
+
+run_inspection_costs_workflow()
