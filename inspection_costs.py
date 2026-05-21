@@ -204,63 +204,6 @@ def build_final_scenarios(
     return pd.DataFrame(detailed_records)
 
 
-def expand_scenarios(
-    cluster_sizes: Iterable[int],
-    detection_lookup_table: pd.DataFrame,
-    k_vals: Iterable[int],
-    target_chips: int = TARGET_CHIPS,
-    steps: Optional[Iterable[float]] = None,
-) -> pd.DataFrame:
-    mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
-    detection_grouped = _group_detection_lookup_table(detection_lookup_table)
-
-    summary_records = []
-    for mix_components in mix_data:
-        mix_id = mix_components[0]["Mix ID"]
-        total_clusters_in_mix = sum(component["Number of Clusters"] for component in mix_components)
-
-        k_options_per_component = []
-        for component in mix_components:
-            valid_ks = [k for k in k_vals if k <= component["Cluster Size (N)"]]
-            k_options_per_component.append(valid_ks)
-
-        for k_combo in itertools.product(*k_options_per_component):
-            scenario_id = f"{mix_id}_K{'-'.join(map(str, k_combo))}"
-            scenario_nm_aggregates: dict[tuple[int, float], dict[str, float]] = {}
-            total_bad_records = 0
-
-            for component, k_val in zip(mix_components, k_combo):
-                N_comp = component["Cluster Size (N)"]
-                num_clusters_comp = component["Number of Clusters"]
-                total_bad_records += num_clusters_comp * k_val
-                detection_info_list = detection_grouped.get((N_comp, k_val), [])
-
-                for n_val, m_val, phys_identified_per_cluster, plv_identified_per_cluster in detection_info_list:
-                    agg_key = (n_val, m_val)
-                    if agg_key not in scenario_nm_aggregates:
-                        scenario_nm_aggregates[agg_key] = {"Phys_EV_sum": 0.0, "PLV_EV_sum": 0.0}
-
-                    scenario_nm_aggregates[agg_key]["Phys_EV_sum"] += phys_identified_per_cluster * num_clusters_comp
-                    scenario_nm_aggregates[agg_key]["PLV_EV_sum"] += plv_identified_per_cluster * num_clusters_comp
-
-            for (n_val, m_val), ev_sums in scenario_nm_aggregates.items():
-                summary_records.append(
-                    {
-                        "Scenario ID": scenario_id,
-                        "Mix ID": mix_id,
-                        "Total Clusters in Mix": total_clusters_in_mix,
-                        "Cluster Size (N)": mix_components[0]["Cluster Size (N)"] if len({component["Cluster Size (N)"] for component in mix_components}) == 1 else np.nan,
-                        "Tests (n)": n_val,
-                        "Chip-level Miss Prob (m)": m_val,
-                        "Share Diverted": total_bad_records / target_chips,
-                        "Physical Inspection - Total Diverted Chips Identified": ev_sums["Phys_EV_sum"],
-                        "PLV - Total Diverted Chips Identified": ev_sums["PLV_EV_sum"],
-                    }
-                )
-
-    return pd.DataFrame(summary_records)
-
-
 def run_inspection_costs_workflow(
     *,
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
@@ -299,17 +242,7 @@ def run_inspection_costs_workflow(
         steps=steps,
     )
     print(f"Final scenarios rows: {len(final_scenarios)}")
-
-    print("Building aggregated scenario summary")
-    summary_df = expand_scenarios(
-        cluster_sizes=cluster_sizes,
-        detection_lookup_table=detection_lookup_table,
-        k_vals=k_vals,
-        target_chips=target_chips,
-        steps=steps,
-    )
-    print(f"Summary rows: {len(summary_df)}")
-
+    
     print("Adding cost and benefit columns")
     costed_summary_df = add_cost_benefit_columns(
         summary_df,
