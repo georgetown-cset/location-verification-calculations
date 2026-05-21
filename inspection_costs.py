@@ -3,6 +3,8 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass
+from fractions import Fraction
+from pathlib import Path
 from typing import Iterable, Optional
 
 import numpy as np
@@ -10,6 +12,8 @@ import pandas as pd
 
 
 TARGET_CHIPS = 2_000_000
+DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
+FINAL_SCENARIOS_PARQUET_PATH = "data/final_scenarios"
 MIX_STEPS = np.arange(0, 1.1, 0.1)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
@@ -17,9 +21,9 @@ PLV_COST_PER_TOTAL_CHIP = (11, 125)
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
 PLV_BASIS_COLUMN = "Cluster Size (N)"
 NET_BENEFIT_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
-CLUSTER_SIZES = [8, 10, 100, 1000, 10000, 100000, 200000]
-K_VALS = [1, 8, 10, 100, 1000, 10000, 100000, 200000]
-N_VALS = [1, 8, 10, 100, 1000]
+CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
+K_VALS = [1, 10, 100, 1000, 10000, 100000, 200000]
+N_VALS = [1, 10, 100, 1000]
 M_VALS = [0.05]
 
 
@@ -55,7 +59,14 @@ def build_detection_lookup_table(
     K_vals: Iterable[int],
     n_vals: Iterable[int],
     m_vals: Iterable[float],
+    parquet_path: Optional[str | Path] = DETECTION_LOOKUP_TABLE_PARQUET_PATH,
 ) -> pd.DataFrame:
+    if parquet_path is not None:
+        parquet_path = Path(parquet_path)
+        if parquet_path.exists():
+            print(f"build_detection_lookup_table: reading cached table from {parquet_path}")
+            return pd.read_parquet(parquet_path)
+
     rows = []
     for N in cluster_sizes:
         for n in n_vals:
@@ -80,7 +91,12 @@ def build_detection_lookup_table(
                             "PLV - Diverted Chips Identified": plv_result["diverted_chips_identified"],
                         }
                     )
-    return pd.DataFrame(rows)
+    result = pd.DataFrame(rows)
+    if parquet_path is not None:
+        parquet_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"build_detection_lookup_table: writing table to {parquet_path}")
+        result.to_parquet(parquet_path, index=False)
+    return result
 
 
 def build_mix_data(
@@ -92,12 +108,10 @@ def build_mix_data(
         steps = MIX_STEPS
 
     cluster_sizes = list(cluster_sizes)
+    steps = list(steps)
+    print(f"build_mix_data: generating mixes for {len(cluster_sizes)} cluster sizes and target {target_chips} chips")
     valid_mixes: list[list[dict[str, int]]] = []
-    for mix_index, proportions in enumerate(itertools.product(steps, repeat=len(cluster_sizes))):
-        if not np.isclose(sum(proportions), 1.0):
-            continue
-
-        mix_id = f"ClusterMix{mix_index + 1}"
+    for _mix_index, proportions in _iter_valid_mix_proportions(steps, len(cluster_sizes)):
         active_components = [(n, p) for n, p in zip(cluster_sizes, proportions) if p > 0]
         current_mix: list[dict[str, int]] = []
         for cluster_size, proportion in active_components:
@@ -107,44 +121,133 @@ def build_mix_data(
                 break
             current_mix.append(
                 {
-                    "Mix ID": mix_id,
                     "Cluster Size (N)": int(cluster_size),
                     "Number of Clusters": int(count),
                 }
             )
 
         if current_mix:
+            mix_id = build_mix_id(current_mix)
+            for component in current_mix:
+                component["Mix ID"] = mix_id
             valid_mixes.append(current_mix)
+            print(
+                f"build_mix_data: accepted {mix_id} with {len(current_mix)} components; "
+                f"total valid mixes={len(valid_mixes)}"
+            )
 
+    print(f"build_mix_data: completed with {len(valid_mixes)} valid mixes")
     return valid_mixes
+
+
+def _iter_valid_mix_proportions(steps: list[float], dimensions: int) -> Iterable[tuple[int, tuple[float, ...]]]:
+    if not steps or dimensions <= 0:
+        return
+
+    integer_units = _integer_step_units(steps)
+    if integer_units is None:
+        yield from _iter_valid_mix_proportions_brute_force(steps, dimensions)
+        return
+
+    units, target_units, unit_tolerance = integer_units
+    if min(units) < 0:
+        yield from _iter_valid_mix_proportions_brute_force(steps, dimensions)
+        return
+
+    suffix_max = [0] * (dimensions + 1)
+    max_unit = max(units)
+    for depth in range(dimensions - 1, -1, -1):
+        suffix_max[depth] = suffix_max[depth + 1] + max_unit
+
+    base = len(steps)
+    index_stack: list[int] = []
+    proportion_stack: list[float] = []
+
+    def visit(depth: int, unit_total: int) -> Iterable[tuple[int, tuple[float, ...]]]:
+        remaining = dimensions - depth
+        if unit_total - unit_tolerance > target_units or unit_total + suffix_max[depth] + unit_tolerance < target_units:
+            return
+        if depth == dimensions:
+            if abs(unit_total - target_units) <= unit_tolerance and np.isclose(sum(proportion_stack), 1.0):
+                yield _product_index(index_stack, base), tuple(proportion_stack)
+            return
+
+        for step_index, (step, unit) in enumerate(zip(steps, units)):
+            if unit_total + unit - unit_tolerance > target_units:
+                continue
+            if unit_total + unit + max_unit * (remaining - 1) + unit_tolerance < target_units:
+                continue
+            index_stack.append(step_index)
+            proportion_stack.append(step)
+            yield from visit(depth + 1, unit_total + unit)
+            proportion_stack.pop()
+            index_stack.pop()
+
+    yield from visit(0, 0)
+
+
+def _integer_step_units(steps: list[float]) -> Optional[tuple[list[int], int, int]]:
+    fractions = [Fraction(float(step)).limit_denominator(1_000_000) for step in steps]
+    denominators = [fraction.denominator for fraction in fractions]
+    scale = math.lcm(*denominators)
+    target_units = scale
+    unit_tolerance = math.ceil((1e-08 + 1e-05) * scale)
+    units = [int(fraction * scale) for fraction in fractions]
+
+    if all(np.isclose(unit / scale, step) for unit, step in zip(units, steps)):
+        return units, target_units, unit_tolerance
+    return None
+
+
+def _iter_valid_mix_proportions_brute_force(steps: list[float], dimensions: int) -> Iterable[tuple[int, tuple[float, ...]]]:
+    for mix_index, proportions in enumerate(itertools.product(steps, repeat=dimensions)):
+        if np.isclose(sum(proportions), 1.0):
+            yield mix_index, proportions
+
+
+def _product_index(indices: list[int], base: int) -> int:
+    mix_index = 0
+    for index in indices:
+        mix_index = mix_index * base + index
+    return mix_index
 
 
 def build_mix_description(mix_components: list[dict[str, int]]) -> str:
     return " + ".join(f"{component['Number of Clusters']}x(N={component['Cluster Size (N)']})" for component in mix_components)
 
 
-def _group_detection_lookup_table(detection_lookup_table: pd.DataFrame) -> dict[tuple[int, int], list[tuple[int, float, float, float]]]:
-    grouped = (
-        detection_lookup_table.groupby(["Cluster Size (N)", "Bad Records (K)"])[
-            [
-                "Tests (n)",
-                "Chip-level Miss Prob (m)",
-                "Physical Inspection - Diverted Chips Identified",
-                "PLV - Diverted Chips Identified",
-            ]
-        ]
-        .apply(
-            lambda frame: list(
-                zip(
-                    frame["Tests (n)"].astype(int),
-                    frame["Chip-level Miss Prob (m)"].astype(float),
-                    frame["Physical Inspection - Diverted Chips Identified"].astype(float),
-                    frame["PLV - Diverted Chips Identified"].astype(float),
-                )
+def build_mix_id(mix_components: list[dict[str, int]]) -> str:
+    characteristics = "_".join(
+        f"N{component['Cluster Size (N)']}-C{component['Number of Clusters']}"
+        for component in mix_components
+    )
+    return f"ClusterMix_{characteristics}"
+
+
+def _group_detection_lookup_table(detection_lookup_table: pd.DataFrame) -> dict[tuple[int, int], list[tuple[int, float, float, float, float, float]]]:
+    grouped: dict[tuple[int, int], list[tuple[int, float, float, float, float, float]]] = {}
+    columns = [
+        "Cluster Size (N)",
+        "Bad Records (K)",
+        "Tests (n)",
+        "Chip-level Miss Prob (m)",
+        "Physical Inspection - P(Detect)",
+        "Physical Inspection - Diverted Chips Identified",
+        "PLV - P(Detect)",
+        "PLV - Diverted Chips Identified",
+    ]
+    for row in detection_lookup_table.loc[:, columns].itertuples(index=False, name=None):
+        N, K, n, m, physical_p_detect, physical_identified, plv_p_detect, plv_identified = row
+        grouped.setdefault((int(N), int(K)), []).append(
+            (
+                int(n),
+                float(m),
+                float(physical_p_detect),
+                float(physical_identified),
+                float(plv_p_detect),
+                float(plv_identified),
             )
         )
-        .to_dict()
-    )
     return grouped
 
 
@@ -154,54 +257,299 @@ def build_final_scenarios(
     k_vals: Iterable[int],
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
+    output_parquet_path: Optional[str | Path] = FINAL_SCENARIOS_PARQUET_PATH,
+    complete_parquet_path: Optional[str | Path] = None,
+    return_dataframe: Optional[bool] = None,
 ) -> pd.DataFrame:
+    cluster_sizes = list(cluster_sizes)
+    k_vals = list(k_vals)
+    print(f"build_final_scenarios: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
     mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
+    print(f"build_final_scenarios: received {len(mix_data)} mixes from build_mix_data")
     detection_grouped = _group_detection_lookup_table(detection_lookup_table)
+    k_options_by_cluster_size = {
+        int(cluster_size): [int(k) for k in k_vals if k <= cluster_size]
+        for cluster_size in cluster_sizes
+    }
 
-    detailed_records: list[dict[str, object]] = []
+    columns = [
+        "Mix ID",
+        "Scenario ID",
+        "Cluster Size (N)",
+        "Bad Records (K)",
+        "Weight (%)",
+        "Number of Clusters",
+        "Mix Description",
+        "Total Clusters in Mix",
+        "Tests (n)",
+        "Share Diverted",
+        "Chip-level Miss Prob (m)",
+        "Physical Inspection - P(Detect)",
+        "Physical Inspection - Diverted Chips Identified",
+        "PLV - P(Detect)",
+        "PLV - Diverted Chips Identified",
+        "Physical Inspection - Total Diverted Chips Identified",
+        "PLV - Total Diverted Chips Identified",
+    ]
+
+    if return_dataframe is None:
+        return_dataframe = output_parquet_path is None
+
+    parquet_path = Path(output_parquet_path) if output_parquet_path is not None else None
+    processed_mix_ids: set[str] = set()
+    if parquet_path is not None:
+        processed_mix_ids = _read_processed_mix_ids_from_parquet(parquet_path)
+        if processed_mix_ids:
+            print(
+                f"build_final_scenarios: found {len(processed_mix_ids)} processed mixes in {parquet_path}; "
+                "those mixes will be skipped"
+            )
+
+    detailed_records: list[tuple[object, ...]] = []
+    total_records = 0
     for mix_components in mix_data:
         mix_id = mix_components[0]["Mix ID"]
-        mix_description = build_mix_description(mix_components)
-        total_clusters_in_mix = sum(component["Number of Clusters"] for component in mix_components)
+        if mix_id in processed_mix_ids:
+            print(f"build_final_scenarios: skipping previously processed {mix_id}")
+            continue
 
-        k_options_per_component = []
-        for component in mix_components:
-            valid_ks = [k for k in k_vals if k <= component["Cluster Size (N)"]]
-            k_options_per_component.append(valid_ks)
+        mix_records = _build_final_scenario_records_for_mix(
+            mix_components=mix_components,
+            detection_grouped=detection_grouped,
+            k_options_by_cluster_size=k_options_by_cluster_size,
+            target_chips=target_chips,
+        )
+        total_records += len(mix_records)
+        if return_dataframe:
+            detailed_records.extend(mix_records)
+        if parquet_path is not None:
+            mix_parquet_path = _write_final_scenarios_mix_to_parquet(parquet_path, mix_id, mix_records, columns)
+            print(
+                f"build_final_scenarios: committed {mix_id} to {mix_parquet_path} "
+                f"({mix_parquet_path.stat().st_size:,} bytes)"
+            )
+        processed_mix_ids.add(mix_id)
+        print(
+            f"build_final_scenarios: finished {mix_id}; "
+            f"records added={len(mix_records)}, total new records={total_records}"
+        )
 
-        for k_combo in itertools.product(*k_options_per_component):
-            scenario_id = f"{mix_id}_K{'-'.join(map(str, k_combo))}"
+    if parquet_path is not None:
+        complete_path = Path(complete_parquet_path) if complete_parquet_path is not None else _complete_parquet_path(parquet_path)
+        _write_complete_final_scenarios_parquet(parquet_path, complete_path)
+        print(f"build_final_scenarios: parquet fragments updated at {parquet_path}")
+        print(f"build_final_scenarios: complete parquet written to {complete_path} ({complete_path.stat().st_size:,} bytes)")
 
-            for component, k_val in zip(mix_components, k_combo):
-                N_comp = component["Cluster Size (N)"]
-                num_clusters_comp = component["Number of Clusters"]
-                weight_pct = (N_comp * num_clusters_comp / target_chips) * 100
-                detection_info_list = detection_grouped.get((N_comp, k_val), [])
+    print(f"build_final_scenarios: completed with {total_records} new detailed records")
+    return pd.DataFrame.from_records(detailed_records, columns=columns)
 
-                for n_val, m_val, phys_identified_per_cluster, plv_identified_per_cluster in detection_info_list:
-                    detailed_records.append(
-                        {
-                            "Mix ID": mix_id,
-                            "Scenario ID": scenario_id,
-                            "Cluster Size (N)": N_comp,
-                            "Bad Records (K)": k_val,
-                            "Weight (%)": weight_pct,
-                            "Number of Clusters": num_clusters_comp,
-                            "Mix Description": mix_description,
-                            "Total Clusters in Mix": total_clusters_in_mix,
-                            "Tests (n)": n_val,
-                            "Share Diverted": k_val / N_comp,
-                            "Chip-level Miss Prob (m)": m_val,
-                            "Physical Inspection - P(Detect)": expected_value_detected_diversion(N_comp, n_val, k_val, m_val)["p_detect"],
-                            "Physical Inspection - Diverted Chips Identified": phys_identified_per_cluster,
-                            "PLV - P(Detect)": expected_value_detected_diversion(N_comp, N_comp, k_val, m_val)["p_detect"],
-                            "PLV - Diverted Chips Identified": plv_identified_per_cluster,
-                            "Physical Inspection - Total Diverted Chips Identified": phys_identified_per_cluster * num_clusters_comp,
-                            "PLV - Total Diverted Chips Identified": plv_identified_per_cluster * num_clusters_comp,
-                        }
+
+def _build_final_scenario_records_for_mix(
+    *,
+    mix_components: list[dict[str, int]],
+    detection_grouped: dict[tuple[int, int], list[tuple[int, float, float, float, float, float]]],
+    k_options_by_cluster_size: dict[int, list[int]],
+    target_chips: int,
+) -> list[tuple[object, ...]]:
+    records: list[tuple[object, ...]] = []
+    mix_id = mix_components[0]["Mix ID"]
+    mix_description = build_mix_description(mix_components)
+    total_clusters_in_mix = sum(component["Number of Clusters"] for component in mix_components)
+    print(
+        f"build_final_scenarios: processing {mix_id} ({mix_description}) "
+        f"with {len(mix_components)} components and {total_clusters_in_mix} total clusters"
+    )
+
+    component_data = [
+        (
+            component["Cluster Size (N)"],
+            component["Number of Clusters"],
+            (component["Cluster Size (N)"] * component["Number of Clusters"] / target_chips) * 100,
+            k_options_by_cluster_size[component["Cluster Size (N)"]],
+        )
+        for component in mix_components
+    ]
+    k_options_per_component = [component[3] for component in component_data]
+
+    for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
+        scenario_id = f"{mix_id}_K{'-'.join(map(str, k_combo))}"
+
+        for (N_comp, num_clusters_comp, weight_pct, _), k_val in zip(component_data, k_combo):
+            share_diverted = k_val / N_comp
+            detection_info_list = detection_grouped.get((N_comp, k_val), [])
+
+            for (
+                n_val,
+                m_val,
+                phys_p_detect,
+                phys_identified_per_cluster,
+                plv_p_detect,
+                plv_identified_per_cluster,
+            ) in detection_info_list:
+                records.append(
+                    (
+                        mix_id,
+                        scenario_id,
+                        N_comp,
+                        k_val,
+                        weight_pct,
+                        num_clusters_comp,
+                        mix_description,
+                        total_clusters_in_mix,
+                        n_val,
+                        share_diverted,
+                        m_val,
+                        phys_p_detect,
+                        phys_identified_per_cluster,
+                        plv_p_detect,
+                        plv_identified_per_cluster,
+                        phys_identified_per_cluster * num_clusters_comp,
+                        plv_identified_per_cluster * num_clusters_comp,
                     )
+                )
 
-    return pd.DataFrame(detailed_records)
+        if combo_count % 1000 == 0:
+            print(
+                f"build_final_scenarios: {mix_id} processed {combo_count} K combinations; "
+                f"records so far for mix={len(records)}"
+            )
+
+    return records
+
+
+def _write_final_scenarios_mix_to_parquet(
+    parquet_path: Path,
+    mix_id: str,
+    records: list[tuple[object, ...]],
+    columns: list[str],
+) -> Path:
+    pq, pa = _import_pyarrow_parquet()
+    _ensure_final_scenarios_dataset_path(parquet_path)
+    mix_parquet_path = _mix_parquet_path(parquet_path, mix_id)
+    if records:
+        table = _final_scenarios_records_to_arrow_table(records, columns, pa)
+        pq.write_table(table, mix_parquet_path)
+    return mix_parquet_path
+
+
+def _read_processed_mix_ids_from_parquet(parquet_path: Path) -> set[str]:
+    if not parquet_path.exists():
+        return set()
+
+    processed_mix_ids: set[str] = set()
+    pq, _pa = _import_pyarrow_parquet()
+
+    for mix_parquet_path in parquet_path.rglob("*.parquet"):
+        try:
+            parquet_file = pq.ParquetFile(mix_parquet_path)
+            mix_ids_in_file: set[str] = set()
+            for batch in parquet_file.iter_batches(columns=["Mix ID"]):
+                mix_ids_in_file.update(str(mix_id) for mix_id in batch.column(0).to_pylist())
+            if len(mix_ids_in_file) == 1:
+                processed_mix_ids.update(mix_ids_in_file)
+            elif mix_ids_in_file:
+                print(
+                    f"build_final_scenarios: ignoring {mix_parquet_path}; "
+                    f"expected one Mix ID but found {len(mix_ids_in_file)}"
+                )
+        except Exception as exc:
+            print(f"build_final_scenarios: ignoring unreadable parquet fragment {mix_parquet_path}: {exc}")
+    return processed_mix_ids
+
+
+def _write_complete_final_scenarios_parquet(component_parquet_path: Path, complete_parquet_path: Path) -> None:
+    pq, pa = _import_pyarrow_parquet()
+    _ensure_final_scenarios_dataset_path(component_parquet_path)
+    complete_parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    schema = _final_scenarios_arrow_schema(pa)
+    fragment_paths = sorted(component_parquet_path.rglob("*.parquet"))
+
+    writer = pq.ParquetWriter(complete_parquet_path, schema)
+    try:
+        if not fragment_paths:
+            writer.write_table(pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema))
+            return
+
+        for fragment_path in fragment_paths:
+            fragment_file = pq.ParquetFile(fragment_path)
+            for batch in fragment_file.iter_batches():
+                writer.write_table(pa.Table.from_batches([batch], schema=schema))
+    finally:
+        writer.close()
+
+
+def _ensure_final_scenarios_dataset_path(parquet_path: Path) -> None:
+    if parquet_path.exists() and not parquet_path.is_dir():
+        raise ValueError(
+            f"{parquet_path} is a file, but chunked final scenario output now uses a parquet dataset directory. "
+            "Move or remove the file, then rerun."
+        )
+    parquet_path.mkdir(parents=True, exist_ok=True)
+
+
+def _complete_parquet_path(component_parquet_path: Path) -> Path:
+    if component_parquet_path.suffix == ".parquet":
+        return component_parquet_path.with_name(f"{component_parquet_path.stem}_complete.parquet")
+    return component_parquet_path.with_suffix(".parquet")
+
+
+def _mix_parquet_path(parquet_path: Path, mix_id: str) -> Path:
+    safe_mix_id = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in mix_id)
+    shard = _mix_id_shard(safe_mix_id)
+    mix_dir = parquet_path / shard
+    mix_dir.mkdir(parents=True, exist_ok=True)
+    return mix_dir / f"{safe_mix_id}.parquet"
+
+
+def _mix_id_shard(safe_mix_id: str) -> str:
+    if safe_mix_id.startswith("ClusterMix_"):
+        safe_mix_id = safe_mix_id.removeprefix("ClusterMix_")
+    first_component = safe_mix_id.split("_", 1)[0]
+    return first_component or "unknown"
+
+
+def _final_scenarios_records_to_arrow_table(records: list[tuple[object, ...]], columns: list[str], pa):
+    return pa.Table.from_arrays(
+        [pa.array(values) for values in zip(*records)],
+        schema=_final_scenarios_arrow_schema(pa),
+    )
+
+
+def _import_pyarrow_parquet():
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError as exc:
+        raise ImportError(
+            "Writing final scenarios to parquet requires pyarrow. "
+            "Install pyarrow or call build_final_scenarios(..., output_parquet_path=None) "
+            "to use the in-memory DataFrame path."
+        ) from exc
+    return pq, pa
+
+
+def _final_scenarios_arrow_schema(pa):
+    return pa.schema(
+        [
+            ("Mix ID", pa.string()),
+            ("Scenario ID", pa.string()),
+            ("Cluster Size (N)", pa.int64()),
+            ("Bad Records (K)", pa.int64()),
+            ("Weight (%)", pa.float64()),
+            ("Number of Clusters", pa.int64()),
+            ("Mix Description", pa.string()),
+            ("Total Clusters in Mix", pa.int64()),
+            ("Tests (n)", pa.int64()),
+            ("Share Diverted", pa.float64()),
+            ("Chip-level Miss Prob (m)", pa.float64()),
+            ("Physical Inspection - P(Detect)", pa.float64()),
+            ("Physical Inspection - Diverted Chips Identified", pa.float64()),
+            ("PLV - P(Detect)", pa.float64()),
+            ("PLV - Diverted Chips Identified", pa.float64()),
+            ("Physical Inspection - Total Diverted Chips Identified", pa.float64()),
+            ("PLV - Total Diverted Chips Identified", pa.float64()),
+        ]
+    )
 
 
 def run_inspection_costs_workflow(
@@ -375,4 +723,5 @@ def fit_net_benefit_model(
     r_squared = 1.0 if ss_tot == 0 else 1 - (ss_res / ss_tot)
     return LinearRegressionResult(feature_names=tuple(features), coefficients=coefficients, r_squared=r_squared)
 
-run_inspection_costs_workflow()
+if __name__ == "__main__":
+    run_inspection_costs_workflow()
