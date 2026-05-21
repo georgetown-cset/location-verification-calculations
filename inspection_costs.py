@@ -339,6 +339,8 @@ def build_final_scenarios(
         _write_complete_final_scenarios_parquet(parquet_path, complete_path)
         print(f"build_final_scenarios: parquet fragments updated at {parquet_path}")
         print(f"build_final_scenarios: complete parquet written to {complete_path} ({complete_path.stat().st_size:,} bytes)")
+        print(f"build_final_scenarios: reading return DataFrame from {complete_path}")
+        return pd.read_parquet(complete_path)
 
     print(f"build_final_scenarios: completed with {total_records} new detailed records")
     return pd.DataFrame.from_records(detailed_records, columns=columns)
