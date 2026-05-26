@@ -15,6 +15,8 @@ import pandas as pd
 TARGET_CHIPS = 2_000_000
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
 FINAL_SCENARIOS_PARQUET_PATH = "data/final_scenarios"
+FINAL_SCENARIO_SUMMARY_DATASET_NAME = "scenario_summary"
+FINAL_SCENARIO_COMPONENT_DATASET_NAME = "scenario_components"
 MIX_STEPS = np.arange(0, 1.1, 0.1)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
@@ -256,36 +258,42 @@ def _group_detection_lookup_table(detection_lookup_table: pd.DataFrame) -> dict[
     return grouped
 
 
-def build_final_scenarios(
+def build_final_scenario_tables(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
     output_parquet_path: Optional[str | Path] = FINAL_SCENARIOS_PARQUET_PATH,
-    complete_parquet_path: Optional[str | Path] = None,
     return_dataframe: Optional[bool] = None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
-    print(f"build_final_scenarios: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
+    print(f"build_final_scenario_tables: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
     mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
-    print(f"build_final_scenarios: received {len(mix_data)} mixes from build_mix_data")
+    print(f"build_final_scenario_tables: received {len(mix_data)} mixes from build_mix_data")
     detection_grouped = _group_detection_lookup_table(detection_lookup_table)
     k_options_by_cluster_size = {
         int(cluster_size): [int(k) for k in k_vals if k <= cluster_size]
         for cluster_size in cluster_sizes
     }
 
-    columns = [
+    scenario_columns = [
         "Mix ID",
         "Scenario ID",
-        "Cluster Size (N)",
-        "Bad Records (K)",
-        "Weight (%)",
-        "Number of Clusters",
         "Mix Description",
         "Total Clusters in Mix",
+        "Scenario Component Count",
+        "K Combo",
+        "N Combo",
+    ]
+
+    component_columns = [
+        "Scenario ID",
+        "Component Index",
+        "Cluster Size (N)",
+        "Bad Records (K)",
+        "Number of Clusters",
         "Tests (n)",
         "Share Diverted",
         "Chip-level Miss Prob (m)",
@@ -303,53 +311,142 @@ def build_final_scenarios(
     parquet_path = Path(output_parquet_path) if output_parquet_path is not None else None
     processed_mix_ids: set[str] = set()
     if parquet_path is not None:
-        processed_mix_ids = _read_processed_mix_ids_from_parquet(parquet_path)
+        processed_mix_ids = _read_processed_mix_ids_from_parquet(_scenario_summary_dataset_path(parquet_path))
         if processed_mix_ids:
             print(
-                f"build_final_scenarios: found {len(processed_mix_ids)} processed mixes in {parquet_path}; "
+                f"build_final_scenario_tables: found {len(processed_mix_ids)} processed mixes in {parquet_path}; "
                 "those mixes will be skipped"
             )
 
-    detailed_records: list[tuple[object, ...]] = []
-    total_records = 0
+    scenario_records: list[tuple[object, ...]] = []
+    component_records: list[tuple[object, ...]] = []
+    total_scenarios = 0
+    total_components = 0
     for mix_components in mix_data:
         mix_id = mix_components[0]["Mix ID"]
         if mix_id in processed_mix_ids:
-            print(f"build_final_scenarios: skipping previously processed {mix_id}")
+            print(f"build_final_scenario_tables: skipping previously processed {mix_id}")
             continue
 
-        mix_records = _build_final_scenario_records_for_mix(
+        mix_scenario_records, mix_component_records = _build_final_scenario_records_for_mix(
             mix_components=mix_components,
             detection_grouped=detection_grouped,
             k_options_by_cluster_size=k_options_by_cluster_size,
             target_chips=target_chips,
         )
-        total_records += len(mix_records)
+        total_scenarios += len(mix_scenario_records)
+        total_components += len(mix_component_records)
         if return_dataframe:
-            detailed_records.extend(mix_records)
+            scenario_records.extend(mix_scenario_records)
+            component_records.extend(mix_component_records)
         if parquet_path is not None:
-            mix_fragments = _write_final_scenarios_mix_to_parquet(parquet_path, mix_id, mix_records, columns)
-            mix_fragment_size = sum(fragment.stat().st_size for fragment in mix_fragments if fragment.exists())
+            summary_fragments = _write_final_scenario_dataset_to_parquet(
+                dataset_path=_scenario_summary_dataset_path(parquet_path),
+                mix_id=mix_id,
+                records=mix_scenario_records,
+                kind="summary",
+            )
+            component_fragments = _write_final_scenario_dataset_to_parquet(
+                dataset_path=_scenario_component_dataset_path(parquet_path),
+                mix_id=mix_id,
+                records=mix_component_records,
+                kind="component",
+            )
+            summary_size = sum(fragment.stat().st_size for fragment in summary_fragments if fragment.exists())
+            component_size = sum(fragment.stat().st_size for fragment in component_fragments if fragment.exists())
             print(
-                f"build_final_scenarios: committed {mix_id} to {len(mix_fragments)} fragment(s) "
-                f"({mix_fragment_size:,} bytes total)"
+                f"build_final_scenario_tables: committed {mix_id} to "
+                f"{len(summary_fragments)} summary fragment(s) and {len(component_fragments)} component fragment(s) "
+                f"({summary_size + component_size:,} bytes total)"
             )
         processed_mix_ids.add(mix_id)
         print(
-            f"build_final_scenarios: finished {mix_id}; "
-            f"records added={len(mix_records)}, total new records={total_records}"
+            f"build_final_scenario_tables: finished {mix_id}; "
+            f"scenario rows added={len(mix_scenario_records)}, component rows added={len(mix_component_records)}, "
+            f"total new scenario rows={total_scenarios}, total new component rows={total_components}"
         )
 
-    if parquet_path is not None:
-        complete_path = Path(complete_parquet_path) if complete_parquet_path is not None else _complete_parquet_path(parquet_path)
-        _write_complete_final_scenarios_parquet(parquet_path, complete_path)
-        print(f"build_final_scenarios: parquet fragments updated at {parquet_path}")
-        print(f"build_final_scenarios: complete parquet written to {complete_path} ({complete_path.stat().st_size:,} bytes)")
-        print(f"build_final_scenarios: reading return DataFrame from {complete_path}")
-        return pd.read_parquet(complete_path)
+    print(
+        f"build_final_scenario_tables: completed with {total_scenarios} new scenario rows "
+        f"and {total_components} new component rows"
+    )
 
-    print(f"build_final_scenarios: completed with {total_records} new detailed records")
-    return pd.DataFrame.from_records(detailed_records, columns=columns)
+    if return_dataframe:
+        scenario_df = pd.DataFrame.from_records(scenario_records, columns=scenario_columns)
+        component_df = pd.DataFrame.from_records(component_records, columns=component_columns)
+    else:
+        scenario_df = pd.DataFrame(columns=scenario_columns)
+        component_df = pd.DataFrame(columns=component_columns)
+    return scenario_df, component_df
+
+
+def build_final_scenarios(
+    cluster_sizes: Iterable[int],
+    detection_lookup_table: pd.DataFrame,
+    k_vals: Iterable[int],
+    target_chips: int = TARGET_CHIPS,
+    steps: Optional[Iterable[float]] = None,
+    output_parquet_path: Optional[str | Path] = FINAL_SCENARIOS_PARQUET_PATH,
+    return_dataframe: Optional[bool] = None,
+) -> pd.DataFrame:
+    scenario_df, component_df = build_final_scenario_tables(
+        cluster_sizes=cluster_sizes,
+        detection_lookup_table=detection_lookup_table,
+        k_vals=k_vals,
+        target_chips=target_chips,
+        steps=steps,
+        output_parquet_path=output_parquet_path,
+        return_dataframe=True if return_dataframe is None else return_dataframe,
+    )
+    return build_final_scenario_view(scenario_df, component_df)
+
+
+def build_final_scenario_view(scenario_df: pd.DataFrame, component_df: pd.DataFrame) -> pd.DataFrame:
+    if scenario_df.empty:
+        return component_df.copy()
+    if component_df.empty:
+        return scenario_df.copy()
+
+    return component_df.merge(scenario_df, on="Scenario ID", how="left", validate="many_to_one")
+
+
+def _scenario_summary_dataset_path(parquet_path: Path) -> Path:
+    return parquet_path / FINAL_SCENARIO_SUMMARY_DATASET_NAME
+
+
+def _scenario_component_dataset_path(parquet_path: Path) -> Path:
+    return parquet_path / FINAL_SCENARIO_COMPONENT_DATASET_NAME
+
+
+def _write_final_scenario_dataset_to_parquet(
+    *,
+    dataset_path: Path,
+    mix_id: str,
+    records: list[tuple[object, ...]],
+    kind: str,
+) -> list[Path]:
+    pq, pa = _import_pyarrow_parquet()
+    _ensure_final_scenarios_dataset_path(dataset_path)
+    if kind == "summary":
+        schema = _final_scenario_summary_arrow_schema(pa)
+    elif kind == "component":
+        schema = _final_scenario_component_arrow_schema(pa)
+    else:
+        raise ValueError(f"Unknown final scenario dataset kind: {kind}")
+    mix_parquet_path = _mix_parquet_path(dataset_path, mix_id)
+    _clear_existing_mix_fragments(mix_parquet_path)
+    if not records:
+        table = _empty_arrow_table(pa, schema)
+        pq.write_table(table, mix_parquet_path)
+        return [mix_parquet_path]
+
+    return _write_final_scenario_fragments_with_size_cap(
+        records=records,
+        fragment_path=mix_parquet_path,
+        pq=pq,
+        pa=pa,
+        schema=schema,
+    )
 
 
 def _build_final_scenario_records_for_mix(
@@ -358,13 +455,14 @@ def _build_final_scenario_records_for_mix(
     detection_grouped: dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]],
     k_options_by_cluster_size: dict[int, list[int]],
     target_chips: int,
-) -> list[tuple[object, ...]]:
-    records: list[tuple[object, ...]] = []
+) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
+    scenario_records: list[tuple[object, ...]] = []
+    component_records: list[tuple[object, ...]] = []
     mix_id = mix_components[0]["Mix ID"]
     mix_description = build_mix_description(mix_components)
     total_clusters_in_mix = sum(component["Number of Clusters"] for component in mix_components)
     print(
-        f"build_final_scenarios: processing {mix_id} ({mix_description}) "
+        f"build_final_scenario_tables: processing {mix_id} ({mix_description}) "
         f"with {len(mix_components)} components and {total_clusters_in_mix} total clusters"
     )
 
@@ -390,7 +488,22 @@ def _build_final_scenario_records_for_mix(
             for n_combo_count, n_combo in enumerate(itertools.product(*n_options_per_component), start=1):
                 scenario_id = f"{mix_id}_K{'-'.join(map(str, k_combo))}_n{'-'.join(map(str, n_combo))}"
 
-                for (N_comp, num_clusters_comp, weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
+                scenario_records.append(
+                    (
+                        mix_id,
+                        scenario_id,
+                        mix_description,
+                        total_clusters_in_mix,
+                        len(mix_components),
+                        "-".join(map(str, k_combo)),
+                        "-".join(map(str, n_combo)),
+                    )
+                )
+
+                for component_index, ((N_comp, num_clusters_comp, _weight_pct, _), k_val, n_val) in enumerate(
+                    zip(component_data, k_combo, n_combo),
+                    start=1,
+                ):
                     share_diverted = k_val / N_comp
                     detection_info_list = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), [])
 
@@ -401,16 +514,13 @@ def _build_final_scenario_records_for_mix(
                         plv_p_detect,
                         plv_identified_per_cluster,
                     ) in detection_info_list:
-                        records.append(
+                        component_records.append(
                             (
-                                mix_id,
                                 scenario_id,
+                                component_index,
                                 N_comp,
                                 k_val,
-                                weight_pct,
                                 num_clusters_comp,
-                                mix_description,
-                                total_clusters_in_mix,
                                 n_val,
                                 share_diverted,
                                 m_val,
@@ -425,17 +535,18 @@ def _build_final_scenario_records_for_mix(
 
                 if n_combo_count % 1000 == 0:
                     print(
-                        f"build_final_scenarios: {mix_id} processed {combo_count} K combinations and "
-                        f"{n_combo_count} n combinations; records so far for mix={len(records)}"
+                        f"build_final_scenario_tables: {mix_id} processed {combo_count} K combinations and "
+                        f"{n_combo_count} n combinations; scenario rows so far for mix={len(scenario_records)}, "
+                        f"component rows so far for mix={len(component_records)}"
                     )
 
         if combo_count % 1000 == 0:
             print(
-                f"build_final_scenarios: {mix_id} processed {combo_count} K combinations; "
-                f"records so far for mix={len(records)}"
+                f"build_final_scenario_tables: {mix_id} processed {combo_count} K combinations; "
+                f"scenario rows so far for mix={len(scenario_records)}, component rows so far for mix={len(component_records)}"
             )
 
-    return records
+    return scenario_records, component_records
 
 
 def _write_final_scenarios_mix_to_parquet(
@@ -456,9 +567,9 @@ def _write_final_scenarios_mix_to_parquet(
     return _write_final_scenario_fragments_with_size_cap(
         records=records,
         fragment_path=mix_parquet_path,
-        columns=columns,
         pq=pq,
         pa=pa,
+        schema=_final_scenarios_arrow_schema(pa),
     )
 
 
@@ -526,12 +637,12 @@ def _write_final_scenario_fragments_with_size_cap(
     *,
     records: list[tuple[object, ...]],
     fragment_path: Path,
-    columns: list[str],
     pq,
     pa,
+    schema,
 ) -> list[Path]:
     _ensure_final_scenarios_dataset_path(fragment_path.parent)
-    table = _final_scenarios_records_to_arrow_table(records, columns, pa)
+    table = _records_to_arrow_table(records, pa, schema)
     pq.write_table(table, fragment_path)
 
     if fragment_path.stat().st_size <= FINAL_SCENARIOS_MAX_FRAGMENT_BYTES or len(records) <= 1:
@@ -545,16 +656,16 @@ def _write_final_scenario_fragments_with_size_cap(
         _write_final_scenario_fragments_with_size_cap(
             records=records[:midpoint],
             fragment_path=left_path,
-            columns=columns,
             pq=pq,
             pa=pa,
+            schema=schema,
         )
         + _write_final_scenario_fragments_with_size_cap(
             records=records[midpoint:],
             fragment_path=right_path,
-            columns=columns,
             pq=pq,
             pa=pa,
+            schema=schema,
         )
     )
 
@@ -573,6 +684,10 @@ def _clear_existing_mix_fragments(mix_parquet_path: Path) -> None:
 
 def _empty_final_scenarios_table(pa):
     schema = _final_scenarios_arrow_schema(pa)
+    return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
+
+
+def _empty_arrow_table(pa, schema):
     return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
 
 
@@ -634,6 +749,10 @@ def _final_scenarios_records_to_arrow_table(records: list[tuple[object, ...]], c
     )
 
 
+def _records_to_arrow_table(records: list[tuple[object, ...]], pa, schema):
+    return pa.Table.from_arrays([pa.array(values) for values in zip(*records)], schema=schema)
+
+
 def _import_pyarrow_parquet():
     try:
         import pyarrow as pa
@@ -645,6 +764,42 @@ def _import_pyarrow_parquet():
             "to use the in-memory DataFrame path."
         ) from exc
     return pq, pa
+
+
+def _final_scenario_summary_arrow_schema(pa):
+    return pa.schema(
+        [
+            ("Mix ID", pa.string()),
+            ("Scenario ID", pa.string()),
+            ("Mix Description", pa.string()),
+            ("Total Clusters in Mix", pa.int64()),
+            ("Scenario Component Count", pa.int64()),
+            ("K Combo", pa.string()),
+            ("N Combo", pa.string()),
+        ]
+    )
+
+
+def _final_scenario_component_arrow_schema(pa):
+    return pa.schema(
+        [
+            ("Scenario ID", pa.string()),
+            ("Component Index", pa.int64()),
+            ("Cluster Size (N)", pa.int64()),
+            ("Bad Records (K)", pa.int64()),
+            ("Number of Clusters", pa.int64()),
+            ("Tests (n)", pa.int64()),
+            ("Share Diverted", pa.float64()),
+            ("Chip-level Miss Prob (m)", pa.float64()),
+            ("Physical Inspection - P(Detect)", pa.float64()),
+            ("Physical Inspection - Diverted Chips Identified", pa.float64()),
+            ("PLV - P(Detect)", pa.float64()),
+            ("PLV - Diverted Chips Identified", pa.float64()),
+            ("Physical Inspection - Total Diverted Chips Identified", pa.float64()),
+            ("PLV - Total Diverted Chips Identified", pa.float64()),
+        ]
+    )
+
 
 def _final_scenarios_arrow_schema(pa):
     return pa.schema(
@@ -804,20 +959,23 @@ def run_inspection_costs_workflow(
     )
     print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
-    print("Building detailed final scenarios")
-    final_scenarios = build_final_scenarios(
+    print("Building normalized final scenarios")
+    scenario_df, component_df = build_final_scenario_tables(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
         target_chips=target_chips,
         steps=steps,
+        return_dataframe=True,
     )
-    print(f"Final scenarios rows: {len(final_scenarios)}")
+    final_scenarios = build_final_scenario_view(scenario_df, component_df)
+    print(f"Scenario rows: {len(scenario_df)}")
+    print(f"Component rows: {len(component_df)}")
     print(final_scenarios.head())
-    
+
     print("Adding cost and benefit columns")
     costed_summary_df = add_cost_benefit_columns(
-        summary_df,
+        final_scenarios,
         phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
         phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
         plv_cost_per_total_chip=plv_cost_per_total_chip,
@@ -833,8 +991,10 @@ def run_inspection_costs_workflow(
     print("Inspection costs workflow complete")
     return {
         "detection_lookup_table": detection_lookup_table,
+        "scenario_df": scenario_df,
+        "component_df": component_df,
         "final_scenarios": final_scenarios,
-        "summary_df": summary_df,
+        "summary_df": final_scenarios,
         "costed_summary_df": costed_summary_df,
         "efficiency_long_df": efficiency_long_df,
         "regression_result": regression_result,
