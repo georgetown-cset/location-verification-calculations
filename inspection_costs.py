@@ -16,9 +16,7 @@ TARGET_CHIPS = 2_000_000
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
 FINAL_SCENARIOS_PARQUET_PATH = "data/final_scenarios"
 FINAL_SCENARIO_COMPONENT_DATASET_NAME = "scenario_components"
-FINAL_SCENARIO_BATCH_SIZE = 1000
-FINAL_SCENARIO_MAX_CHUNKS_PER_DATASET = 4
-MIX_STEPS = np.arange(0, 1.1, 0.1)
+MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
 PLV_COST_PER_TOTAL_CHIP = (11, 125)
@@ -308,17 +306,23 @@ def build_final_scenario_tables(
 
     if parquet_path is not None:
         component_dataset_path = _scenario_component_dataset_path(parquet_path)
+        _clear_parquet_dataset(component_dataset_path)
         for mix_components in mix_data:
             mix_id = mix_components[0]["Mix ID"]
-            mix_summary_count, mix_component_count, mix_fragment_count = _write_mix_tables_streaming(
-                component_dataset_path=component_dataset_path,
+            mix_scenario_records, mix_component_records = _build_final_scenario_records_for_mix(
                 mix_components=mix_components,
                 detection_grouped=detection_grouped,
                 k_options_by_cluster_size=k_options_by_cluster_size,
                 target_chips=target_chips,
-                batch_size=FINAL_SCENARIO_BATCH_SIZE,
-                max_chunks_per_dataset=FINAL_SCENARIO_MAX_CHUNKS_PER_DATASET,
             )
+            mix_component_fragments = _write_final_scenario_dataset_to_parquet(
+                dataset_path=component_dataset_path,
+                mix_id=mix_id,
+                records=mix_component_records,
+            )
+            mix_summary_count = len(mix_scenario_records)
+            mix_component_count = len(mix_component_records)
+            mix_fragment_count = len(mix_component_fragments)
             total_scenarios += mix_summary_count
             total_components += mix_component_count
             print(
@@ -504,6 +508,14 @@ def _scenario_component_dataset_path(parquet_path: Path) -> Path:
     return parquet_path / FINAL_SCENARIO_COMPONENT_DATASET_NAME
 
 
+def _clear_parquet_dataset(dataset_path: Path) -> None:
+    if not dataset_path.exists():
+        return
+    for parquet_path in dataset_path.rglob("*.parquet"):
+        if parquet_path.is_file():
+            parquet_path.unlink()
+
+
 def _mix_dataset_dir(dataset_path: Path, mix_id: str) -> Path:
     safe_mix_id = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in mix_id)
     shard = _mix_id_shard(safe_mix_id)
@@ -512,237 +524,25 @@ def _mix_dataset_dir(dataset_path: Path, mix_id: str) -> Path:
     return mix_dir
 
 
-def _chunk_file_path(dataset_path: Path, mix_id: str, kind: str, chunk_index: int) -> Path:
-    return _mix_dataset_dir(dataset_path, mix_id) / f"{kind}_chunk{chunk_index:05d}.parquet"
-
-
-def _count_completed_mix_chunks(component_dataset_path: Path, mix_id: str) -> int:
-    component_dir = _mix_dataset_dir(component_dataset_path, mix_id)
-    pq, _pa = _import_pyarrow_parquet()
-    if not _component_mix_dir_is_current_version(component_dir, pq):
-        for existing_path in component_dir.glob("*.parquet"):
-            if existing_path.is_file():
-                existing_path.unlink()
-        return 0
-
-    completed_chunks = _chunk_indices_in_directory(component_dir)
-    if not completed_chunks:
-        return 0
-
-    prefix_length = 0
-    while (prefix_length + 1) in completed_chunks:
-        prefix_length += 1
-    return prefix_length
-
-
-def _component_mix_dir_is_current_version(component_dir: Path, pq) -> bool:
-    expected_columns = [
-        "Scenario ID",
-        "Cluster Size (N)",
-        "Bad Records (K)",
-        "Number of Clusters",
-        "Tests (n)",
-    ]
-    for parquet_path in component_dir.glob("*.parquet"):
-        try:
-            parquet_file = pq.ParquetFile(parquet_path)
-        except Exception:
-            return False
-        if list(parquet_file.schema.names) != expected_columns:
-            return False
-    return True
-
-
-def _prune_stale_mix_chunks(dataset_path: Path, mix_id: str, keep_chunk_count: int) -> None:
-    mix_dir = _mix_dataset_dir(dataset_path, mix_id)
-    if not mix_dir.exists():
-        return
-
-    for parquet_path in mix_dir.glob("*.parquet"):
-        match = re.search(r"chunk(\d+)", parquet_path.stem)
-        if match is None:
-            parquet_path.unlink()
-            continue
-
-        if int(match.group(1)) > keep_chunk_count:
-            parquet_path.unlink()
-
-
-def _count_final_scenario_rows_for_mix(
-    *,
-    mix_components: list[dict[str, int]],
-    detection_grouped: dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]],
-    k_options_by_cluster_size: dict[int, list[int]],
-    target_chips: int,
-) -> tuple[int, int]:
-    component_data = [
-        (
-            component["Cluster Size (N)"],
-            component["Number of Clusters"],
-            (component["Cluster Size (N)"] * component["Number of Clusters"] / target_chips) * 100,
-            k_options_by_cluster_size[component["Cluster Size (N)"]],
-        )
-        for component in mix_components
-    ]
-    k_options_per_component = [component[3] for component in component_data]
-
-    scenario_rows = 0
-    component_rows = 0
-    for k_combo in itertools.product(*k_options_per_component):
-        n_options_per_component: list[tuple[int, ...]] = []
-        for (N_comp, _num_clusters_comp, _weight_pct, _), k_val in zip(component_data, k_combo):
-            n_options = detection_grouped.get((N_comp, int(k_val)), {})
-            if not n_options:
-                break
-            n_options_per_component.append(tuple(sorted(n_options)))
-        else:
-            for n_combo in itertools.product(*n_options_per_component):
-                scenario_rows += 1
-                for (N_comp, num_clusters_comp, _weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
-                    detection_info_list = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), [])
-                    component_rows += len(detection_info_list)
-
-    return scenario_rows, component_rows
-
-
-def _chunk_indices_in_directory(directory: Path) -> set[int]:
-    indices: set[int] = set()
-    if not directory.exists():
-        return indices
-    for path in directory.glob("*.parquet"):
-        match = re.search(r"chunk(\d+)", path.stem)
-        if match:
-            indices.add(int(match.group(1)))
-    return indices
-
-
 def _write_final_scenario_dataset_to_parquet(
     *,
     dataset_path: Path,
     mix_id: str,
     records: list[tuple[object, ...]],
-    kind: str,
 ) -> list[Path]:
     pq, pa = _import_pyarrow_parquet()
     _ensure_final_scenarios_dataset_path(dataset_path)
-    if kind == "component":
-        schema = _final_scenario_component_arrow_schema(pa)
-    else:
-        raise ValueError(f"Unknown final scenario dataset kind: {kind}")
     mix_parquet_path = _mix_parquet_path(dataset_path, mix_id)
-    _clear_existing_mix_fragments(mix_parquet_path)
+    _clear_existing_mix_files(mix_parquet_path)
     if not records:
-        table = _empty_arrow_table(pa, schema)
+        table = _empty_arrow_table(pa, _final_scenario_component_arrow_schema(pa))
         pq.write_table(table, mix_parquet_path)
         return [mix_parquet_path]
 
-    return _write_final_scenario_fragments_with_size_cap(
-        records=records,
-        fragment_path=mix_parquet_path,
-        pq=pq,
-        pa=pa,
-        schema=schema,
-    )
-
-
-def _write_mix_tables_streaming(
-    *,
-    component_dataset_path: Path,
-    mix_components: list[dict[str, int]],
-    detection_grouped: dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]],
-    k_options_by_cluster_size: dict[int, list[int]],
-    target_chips: int,
-    batch_size: int,
-    max_chunks_per_dataset: int,
-) -> tuple[int, int, int]:
-    mix_id = mix_components[0]["Mix ID"]
-    total_scenarios, total_components = _count_final_scenario_rows_for_mix(
-        mix_components=mix_components,
-        detection_grouped=detection_grouped,
-        k_options_by_cluster_size=k_options_by_cluster_size,
-        target_chips=target_chips,
-    )
-    adaptive_batch_size = max(batch_size, math.ceil(total_scenarios / max_chunks_per_dataset)) if total_scenarios else batch_size
-    expected_chunks = math.ceil(total_scenarios / adaptive_batch_size) if total_scenarios else 0
-    summary_completed_chunks = _count_completed_mix_chunks(component_dataset_path, mix_id)
-    keep_chunks = min(summary_completed_chunks, expected_chunks) if expected_chunks else 0
-    _prune_stale_mix_chunks(component_dataset_path, mix_id, keep_chunks)
-    if expected_chunks and summary_completed_chunks >= expected_chunks:
-        print(
-            f"build_final_scenario_tables: skipping previously completed {mix_id} "
-            f"({expected_chunks} expected chunk(s))"
-        )
-        return 0, 0, 0
-
-    resume_from_scenario = summary_completed_chunks * adaptive_batch_size
-    next_chunk_index = summary_completed_chunks + 1
-    print(
-        f"build_final_scenario_tables: streaming {mix_id} from scenario offset {resume_from_scenario} "
-        f"using batch size {adaptive_batch_size} "
-        f"(targeting at most {max_chunks_per_dataset} chunk(s) per dataset)"
-    )
-
-    summary_batch: list[tuple[object, ...]] = []
-    component_batch: list[tuple[object, ...]] = []
-    mix_summary_rows = 0
-    mix_component_rows = 0
-    written_fragments = 0
-
-    def emit_scenario(scenario_row: tuple[object, ...], component_rows: list[tuple[object, ...]]) -> None:
-        nonlocal next_chunk_index, mix_summary_rows, mix_component_rows, written_fragments
-        summary_batch.append(scenario_row)
-        component_batch.extend(component_rows)
-        mix_summary_rows += 1
-        mix_component_rows += len(component_rows)
-
-        if len(summary_batch) >= adaptive_batch_size:
-            written_fragments += _flush_mix_batch(
-                component_dataset_path=component_dataset_path,
-                mix_id=mix_id,
-                chunk_index=next_chunk_index,
-                component_records=component_batch,
-            )
-            summary_batch.clear()
-            component_batch.clear()
-            next_chunk_index += 1
-
-    _build_final_scenario_records_for_mix(
-        mix_components=mix_components,
-        detection_grouped=detection_grouped,
-        k_options_by_cluster_size=k_options_by_cluster_size,
-        target_chips=target_chips,
-        emit_scenario=emit_scenario,
-        skip_scenarios=resume_from_scenario,
-    )
-
-    if summary_batch:
-        written_fragments += _flush_mix_batch(
-            component_dataset_path=component_dataset_path,
-            mix_id=mix_id,
-            chunk_index=next_chunk_index,
-            component_records=component_batch,
-        )
-
-    return mix_summary_rows, mix_component_rows, written_fragments
-
-
-def _flush_mix_batch(
-    *,
-    component_dataset_path: Path,
-    mix_id: str,
-    chunk_index: int,
-    component_records: list[tuple[object, ...]],
-) -> int:
-    pq, pa = _import_pyarrow_parquet()
-    component_base = _chunk_file_path(component_dataset_path, mix_id, "component", chunk_index)
-    component_fragments = _write_final_scenario_fragments_with_size_cap(
-        records=list(component_records),
-        fragment_path=component_base,
-        pq=pq,
-        pa=pa,
-        schema=_final_scenario_component_arrow_schema(pa),
-    )
-    return len(component_fragments)
+    schema = _final_scenario_component_arrow_schema(pa)
+    table = _records_to_arrow_table(records, pa, schema)
+    pq.write_table(table, mix_parquet_path)
+    return [mix_parquet_path]
 
 
 def _build_final_scenario_records_for_mix(
@@ -961,10 +761,10 @@ def _split_fragment_path(fragment_path: Path, suffix: str) -> Path:
     return fragment_path.with_name(f"{fragment_path.stem}_{suffix}{fragment_path.suffix}")
 
 
-def _clear_existing_mix_fragments(mix_parquet_path: Path) -> None:
-    fragment_dir = mix_parquet_path.parent
+def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
+    mix_dir = mix_parquet_path.parent
     fragment_stem = mix_parquet_path.stem
-    for existing_path in fragment_dir.glob(f"{fragment_stem}*.parquet"):
+    for existing_path in mix_dir.rglob(f"{fragment_stem}*.parquet"):
         if existing_path.is_file():
             existing_path.unlink()
 
