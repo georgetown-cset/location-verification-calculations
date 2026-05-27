@@ -21,6 +21,7 @@ SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
 SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
 LONG_SCENARIOS_PARQUET_PATH = f"{DATA_SAVED_DIR}/long_scenarios.parquet"
 REGRESSION_RESULT_JSON_PATH = f"{OUTPUT_DIR}/regression_result.json"
+NET_BENEFIT_RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/net_benefit_relationship_summary.csv"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
@@ -777,6 +778,36 @@ def _classify_net_benefit_relationship(summary_df: pd.DataFrame) -> pd.Series:
     return result
 
 
+def _summarize_net_benefit_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
+    """Return a compact count table for the net benefit relationship buckets."""
+
+    if NET_BENEFIT_RELATIONSHIP_COLUMN not in final_df.columns:
+        raise ValueError(
+            f"{NET_BENEFIT_RELATIONSHIP_COLUMN!r} is missing from the final dataframe; "
+            "run add_cost_benefit_columns() first."
+        )
+
+    summary = (
+        final_df.groupby(NET_BENEFIT_RELATIONSHIP_COLUMN, dropna=False)
+        .size()
+        .rename("Scenario Count")
+        .reset_index()
+        .sort_values(NET_BENEFIT_RELATIONSHIP_COLUMN)
+        .reset_index(drop=True)
+    )
+    summary["Relationship Description"] = summary[NET_BENEFIT_RELATIONSHIP_COLUMN].map(
+        NET_BENEFIT_RELATIONSHIP_LABELS
+    )
+    total_row = pd.DataFrame(
+        {
+            NET_BENEFIT_RELATIONSHIP_COLUMN: ["Total"],
+            "Scenario Count": [int(len(final_df))],
+            "Relationship Description": ["All scenarios"],
+        }
+    )
+    return pd.concat([summary, total_row], ignore_index=True)
+
+
 
 def _final_scenario_component_arrow_schema(pa):
     return pa.schema(
@@ -1062,11 +1093,13 @@ def run_inspection_costs_workflow(
     scenarios_combined_path = Path(SCENARIOS_COMBINED_PARQUET_PATH)
     scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
     long_scenarios_path = Path(LONG_SCENARIOS_PARQUET_PATH)
+    net_benefit_relationship_summary_path = Path(NET_BENEFIT_RELATIONSHIP_SUMMARY_CSV_PATH)
     detection_lookup_table = None
     scenario_df = None
     component_df = None
     combined_df = None
     final_df = None
+    relationship_summary_df = None
 
     print("Starting inspection costs workflow")
     if not scenarios_combined_path.exists():
@@ -1132,6 +1165,10 @@ def run_inspection_costs_workflow(
             scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
             final_df.to_parquet(scenarios_costed_path, index=False)
 
+    relationship_summary_df = _summarize_net_benefit_relationships(final_df)
+    net_benefit_relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
+    relationship_summary_df.to_csv(net_benefit_relationship_summary_path, index=False)
+
     if not long_scenarios_path.exists() or not _parquet_file_has_columns(
         long_scenarios_path,
         [NET_BENEFIT_RELATIONSHIP_COLUMN],
@@ -1163,6 +1200,7 @@ def run_inspection_costs_workflow(
         "component_df": component_df,
         "combined_df": combined_df,
         "final_df": final_df,
+        "relationship_summary_df": relationship_summary_df,
         "long_df": long_df,
         "long_scenarios_path": long_scenarios_path,
         "regression_result": regression_result,
