@@ -1325,47 +1325,18 @@ def run_inspection_costs_workflow(
     print("Starting inspection costs workflow")
     if scenarios_costed_path.exists():
         print(f"Loading cached costed scenarios from {scenarios_costed_path}")
-        cached_costed_columns = set(_parquet_file_columns(scenarios_costed_path))
-        if NET_BENEFIT_RELATIONSHIP_COLUMN not in cached_costed_columns or BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN not in cached_costed_columns:
-            print(
-                "Cached costed scenarios are missing one or more relationship columns; "
-                "recomputing and saving refreshed output"
-            )
-            final_df = pd.read_parquet(scenarios_costed_path)
-            final_df = add_cost_benefit_columns(
-                final_df,
-                phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-                phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
-                plv_cost_per_total_chip=plv_cost_per_total_chip,
-            )
-            scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
-            final_df.to_parquet(scenarios_costed_path, index=False)
+        final_df = None
+        print(f"Generating relationship summary at {relationship_summary_path}")
+        relationship_summary_df = _summarize_relationships_from_parquet(scenarios_costed_path)
+        relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Writing relationship summary CSV to {relationship_summary_path}")
+        relationship_summary_df.to_csv(relationship_summary_path, index=False)
 
-            print(f"Generating relationship summary at {relationship_summary_path}")
-            relationship_summary_df = _summarize_relationships(final_df)
-            relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"Writing relationship summary CSV to {relationship_summary_path}")
-            relationship_summary_df.to_csv(relationship_summary_path, index=False)
-
-            print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
-            relationship_boxplot_rows_df = _build_relationship_boxplot_dataframe(final_df)
-            relationship_boxplot_df = _summarize_relationship_boxplot_dataframe(relationship_boxplot_rows_df)
-            relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"Writing relationship boxplot CSV to {relationship_boxplot_values_path}")
-            relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
-        else:
-            final_df = None
-            print(f"Generating relationship summary at {relationship_summary_path}")
-            relationship_summary_df = _summarize_relationships_from_parquet(scenarios_costed_path)
-            relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"Writing relationship summary CSV to {relationship_summary_path}")
-            relationship_summary_df.to_csv(relationship_summary_path, index=False)
-
-            print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
-            relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
-                scenarios_costed_path,
-                relationship_boxplot_values_path,
-            )
+        print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
+        relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
+            scenarios_costed_path,
+            relationship_boxplot_values_path,
+        )
     else:
         if not scenarios_combined_path.exists():
             print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
