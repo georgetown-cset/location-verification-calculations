@@ -29,6 +29,19 @@ CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
 K_VALS = [1, 10, 100, 1000, 10000, 100000, 200000]
 N_VALS = [1, 10, 100, 1000]
 M_VALS = [0.05]
+LONG_SCENARIO_CHUNK_ROWS = 50_000
+LONG_SCENARIO_VALUE_VARS = (
+    "Physical - Min Net Benefit",
+    "Physical - Max Net Benefit",
+    "PLV - Min Net Benefit",
+    "PLV - Max Net Benefit",
+)
+LONG_SCENARIO_BENEFIT_SCENARIOS = {
+    "Physical - Min Net Benefit": "Physical (Conservative)",
+    "Physical - Max Net Benefit": "Physical (Optimistic)",
+    "PLV - Min Net Benefit": "PLV (Conservative)",
+    "PLV - Max Net Benefit": "PLV (Optimistic)",
+}
 
 
 def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
@@ -795,45 +808,99 @@ def add_cost_benefit_columns(
     return result
 
 
-def build_long_scenarios(
-    final_df: Optional[pd.DataFrame] = None,
-    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
-    parquet_path: Optional[str | Path] = LONG_SCENARIOS_PARQUET_PATH,
+def _build_long_scenarios_dataframe(
+    final_df: pd.DataFrame,
+    dollars_per_chip_detected: tuple[float, float],
 ) -> pd.DataFrame:
-    if parquet_path is not None:
-        parquet_path = Path(parquet_path)
-        if parquet_path.exists():
-            print(f"build_long_scenarios: reading cached table from {parquet_path}")
-            return pd.read_parquet(parquet_path)
-
-    if final_df is None:
-        raise ValueError("final_df is required when no cached long scenarios table is available")
-
     long_df = final_df.melt(
         id_vars=[column for column in final_df.columns if "Net Benefit" not in column],
-        value_vars=[
-            "Physical - Min Net Benefit",
-            "Physical - Max Net Benefit",
-            "PLV - Min Net Benefit",
-            "PLV - Max Net Benefit",
-        ],
+        value_vars=list(LONG_SCENARIO_VALUE_VARS),
         var_name="Scenario Type",
         value_name="Net Benefit ($)",
     )
-
-    long_df["Benefit Scenario"] = long_df["Scenario Type"].map(
-        {
-            "Physical - Min Net Benefit": "Physical (Conservative)",
-            "Physical - Max Net Benefit": "Physical (Optimistic)",
-            "PLV - Min Net Benefit": "PLV (Conservative)",
-            "PLV - Max Net Benefit": "PLV (Optimistic)",
-        }
-    )
+    long_df["Benefit Scenario"] = long_df["Scenario Type"].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
     long_df["Total Expected Value"] = np.where(
         long_df["Scenario Type"].str.startswith("Physical"),
         long_df["Physical Inspection - Total Diverted Chips Identified"],
         long_df["PLV - Total Diverted Chips Identified"],
     ) * dollars_per_chip_detected[0]
+    return long_df
+
+
+def _iter_long_scenarios_chunks(
+    final_df: pd.DataFrame,
+    dollars_per_chip_detected: tuple[float, float],
+    chunk_rows: int,
+) -> Iterable[pd.DataFrame]:
+    for start in range(0, len(final_df), chunk_rows):
+        chunk = final_df.iloc[start : start + chunk_rows]
+        yield _build_long_scenarios_dataframe(chunk, dollars_per_chip_detected=dollars_per_chip_detected)
+
+
+def _write_long_scenarios_to_parquet(
+    final_df: pd.DataFrame,
+    parquet_path: Path,
+    dollars_per_chip_detected: tuple[float, float],
+    chunk_rows: int,
+) -> None:
+    pq, pa = _import_pyarrow_parquet()
+    writer = None
+    try:
+        for long_chunk in _iter_long_scenarios_chunks(
+            final_df,
+            dollars_per_chip_detected=dollars_per_chip_detected,
+            chunk_rows=chunk_rows,
+        ):
+            if long_chunk.empty:
+                continue
+            table = pa.Table.from_pandas(long_chunk, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(str(parquet_path), table.schema)
+            writer.write_table(table)
+
+        if writer is None:
+            empty_long_df = _build_long_scenarios_dataframe(
+                final_df.iloc[0:0],
+                dollars_per_chip_detected=dollars_per_chip_detected,
+            )
+            empty_table = pa.Table.from_pandas(empty_long_df, preserve_index=False)
+            writer = pq.ParquetWriter(str(parquet_path), empty_table.schema)
+            writer.write_table(empty_table)
+    finally:
+        if writer is not None:
+            writer.close()
+
+
+def build_long_scenarios(
+    final_df: Optional[pd.DataFrame] = None,
+    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
+    parquet_path: Optional[str | Path] = LONG_SCENARIOS_PARQUET_PATH,
+    materialize: bool = True,
+    chunk_rows: int = LONG_SCENARIO_CHUNK_ROWS,
+) -> pd.DataFrame | None:
+    if parquet_path is not None:
+        parquet_path = Path(parquet_path)
+        if parquet_path.exists():
+            print(f"build_long_scenarios: reading cached table from {parquet_path}")
+            if not materialize:
+                return None
+            return pd.read_parquet(parquet_path)
+
+    if final_df is None:
+        raise ValueError("final_df is required when no cached long scenarios table is available")
+
+    if parquet_path is not None and not materialize:
+        parquet_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"build_long_scenarios: streaming table to {parquet_path}")
+        _write_long_scenarios_to_parquet(
+            final_df,
+            parquet_path,
+            dollars_per_chip_detected=dollars_per_chip_detected,
+            chunk_rows=chunk_rows,
+        )
+        return None
+
+    long_df = _build_long_scenarios_dataframe(final_df, dollars_per_chip_detected=dollars_per_chip_detected)
     if parquet_path is not None:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"build_long_scenarios: writing table to {parquet_path}")
@@ -871,6 +938,43 @@ def fit_long_scenario_model(
     ss_res = float(np.sum((y - predictions) ** 2))
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     r_squared = 1.0 if ss_tot == 0 else 1 - (ss_res / ss_tot)
+    return LinearRegressionResult(feature_names=tuple(features), coefficients=coefficients, r_squared=r_squared)
+
+
+def fit_long_scenario_model_from_parquet(
+    parquet_path: str | Path,
+    feature_columns: Iterable[str] = NET_BENEFIT_FEATURE_COLUMNS,
+    batch_size: int = 65_536,
+) -> LinearRegressionResult:
+    pq, _pa = _import_pyarrow_parquet()
+    parquet_path = Path(parquet_path)
+    features = list(feature_columns)
+    feature_count = len(features) + 1
+    xtx = np.zeros((feature_count, feature_count), dtype=float)
+    xty = np.zeros(feature_count, dtype=float)
+    sum_y = 0.0
+    sum_y2 = 0.0
+    row_count = 0
+    parquet_file = pq.ParquetFile(parquet_path)
+
+    for batch in parquet_file.iter_batches(columns=[*features, "Net Benefit ($)"], batch_size=batch_size):
+        batch_df = batch.to_pandas()
+        X = batch_df.loc[:, features].to_numpy(dtype=float)
+        y = batch_df["Net Benefit ($)"].to_numpy(dtype=float)
+        X_design = np.column_stack([np.ones(len(X)), X])
+        xtx += X_design.T @ X_design
+        xty += X_design.T @ y
+        sum_y += float(y.sum())
+        sum_y2 += float(np.dot(y, y))
+        row_count += len(y)
+
+    if row_count == 0:
+        raise ValueError(f"No rows found in long-scenarios parquet: {parquet_path}")
+
+    coefficients, *_ = np.linalg.lstsq(xtx, xty, rcond=None)
+    rss = float(sum_y2 - 2 * coefficients @ xty + coefficients @ xtx @ coefficients)
+    tss = float(sum_y2 - (sum_y * sum_y / row_count))
+    r_squared = 1.0 if tss == 0 else 1 - (rss / tss)
     return LinearRegressionResult(feature_names=tuple(features), coefficients=coefficients, r_squared=r_squared)
 
 def run_inspection_costs_workflow(
@@ -955,17 +1059,14 @@ def run_inspection_costs_workflow(
             final_df,
             dollars_per_chip_detected=dollars_per_chip_detected,
             parquet_path=long_scenarios_path,
+            materialize=False,
         )
     else:
         print(f"Loading cached long scenarios from {long_scenarios_path}")
-        long_df = build_long_scenarios(
-            None,
-            dollars_per_chip_detected=dollars_per_chip_detected,
-            parquet_path=long_scenarios_path,
-        )
+        long_df = None
 
     print("Fitting long-scenario model")
-    regression_result = fit_long_scenario_model(long_df)
+    regression_result = fit_long_scenario_model_from_parquet(long_scenarios_path)
     if regression_result_path is not None:
         regression_result_path = Path(regression_result_path)
         regression_result_path.parent.mkdir(parents=True, exist_ok=True)
@@ -981,6 +1082,7 @@ def run_inspection_costs_workflow(
         "combined_df": combined_df,
         "final_df": final_df,
         "long_df": long_df,
+        "long_scenarios_path": long_scenarios_path,
         "regression_result": regression_result,
     }
 
