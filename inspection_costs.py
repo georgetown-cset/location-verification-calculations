@@ -290,7 +290,10 @@ def build_final_scenario_tables(
     ]
 
     component_columns = [
+        "Mix ID",
         "Scenario ID",
+        "K Combo",
+        "N Combo",
         "Cluster Size (N)",
         "Bad Records (K)",
         "Number of Clusters",
@@ -451,7 +454,7 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
             ]
         )
 
-    summary_source = component_df.loc[:, ["Scenario ID", "Cluster Size (N)", "Number of Clusters"]].copy()
+    summary_source = component_df.loc[:, ["Scenario ID", "Mix ID", "K Combo", "N Combo", "Cluster Size (N)", "Number of Clusters"]].copy()
     summary_source.sort_values(["Scenario ID", "Cluster Size (N)"], inplace=True)
     summary_source["_component_label"] = (
         summary_source["Number of Clusters"].astype(str)
@@ -468,26 +471,21 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
     )
 
     scenario_summary = grouped.agg(
+        Mix_ID=("Mix ID", "first"),
         Mix_Description=("_component_label", " + ".join),
         Total_Clusters_in_Mix=("Number of Clusters", "sum"),
         Scenario_Component_Count=("Number of Clusters", "size"),
+        K_Combo=("K Combo", "first"),
+        N_Combo=("N Combo", "first"),
     ).reset_index()
-
-    parsed_ids = scenario_summary["Scenario ID"].str.extract(
-        r"(?P<mix_id>.+)_K(?P<k_combo>[\d-]+)_n(?P<n_combo>[\d-]+)$"
-    )
-    if parsed_ids.isnull().any().any():
-        invalid_ids = scenario_summary.loc[parsed_ids.isnull().any(axis=1), "Scenario ID"].head(5).tolist()
-        raise ValueError(f"Invalid Scenario ID format encountered while deriving summaries: {invalid_ids}")
-
-    scenario_summary = pd.concat([parsed_ids, scenario_summary], axis=1).rename(
+    scenario_summary = scenario_summary.rename(
         columns={
-            "mix_id": "Mix ID",
-            "k_combo": "K Combo",
-            "n_combo": "N Combo",
+            "Mix_ID": "Mix ID",
             "Mix_Description": "Mix Description",
             "Total_Clusters_in_Mix": "Total Clusters in Mix",
             "Scenario_Component_Count": "Scenario Component Count",
+            "K_Combo": "K Combo",
+            "N_Combo": "N Combo",
         }
     )
     scenario_summary = scenario_summary[
@@ -569,7 +567,10 @@ def _scenario_component_dataset_path(parquet_path: Path) -> Path:
 
 def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
     expected_columns = [
+        "Mix ID",
         "Scenario ID",
+        "K Combo",
+        "N Combo",
         "Cluster Size (N)",
         "Bad Records (K)",
         "Number of Clusters",
@@ -692,7 +693,10 @@ def _build_final_scenario_records_for_mix(
                     ) in detection_info_list:
                         component_rows.append(
                             (
+                                mix_id,
                                 scenario_id,
+                                "-".join(map(str, k_combo)),
+                                "-".join(map(str, n_combo)),
                                 N_comp,
                                 k_val,
                                 num_clusters_comp,
@@ -956,7 +960,10 @@ def _import_pyarrow_parquet():
 def _final_scenario_component_arrow_schema(pa):
     return pa.schema(
         [
+            ("Mix ID", pa.string()),
             ("Scenario ID", pa.string()),
+            ("K Combo", pa.string()),
+            ("N Combo", pa.string()),
             ("Cluster Size (N)", pa.int64()),
             ("Bad Records (K)", pa.int64()),
             ("Number of Clusters", pa.int64()),
