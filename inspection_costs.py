@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import itertools
 import math
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ TARGET_CHIPS = 2_000_000
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
 SCENARIOS_PARQUET_PATH = "data/scenarios"
 LONG_SCENARIOS_PARQUET_PATH = "data/long_scenarios.parquet"
+REGRESSION_RESULT_JSON_PATH = "data/regression_result.json"
 FINAL_SCENARIO_COMPONENT_DATASET_NAME = "scenario_components"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
@@ -883,6 +885,7 @@ def run_inspection_costs_workflow(
     phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
     dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
+    regression_result_path: Optional[str | Path] = REGRESSION_RESULT_JSON_PATH,
 ) -> dict[str, object]:
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
@@ -963,6 +966,14 @@ def run_inspection_costs_workflow(
 
     print("Fitting long-scenario model")
     regression_result = fit_long_scenario_model(long_df)
+    if regression_result_path is not None:
+        regression_result_path = Path(regression_result_path)
+        regression_result_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving regression result to {regression_result_path}")
+        regression_result_path.write_text(
+            json.dumps(regression_result.as_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print("Inspection costs workflow complete")
     return {
         "scenario_df": scenario_df,
