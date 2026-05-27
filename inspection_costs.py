@@ -22,6 +22,7 @@ SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
 LONG_SCENARIOS_PARQUET_PATH = f"{DATA_SAVED_DIR}/long_scenarios.parquet"
 REGRESSION_RESULT_JSON_PATH = f"{OUTPUT_DIR}/regression_result.json"
 RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/relationship_summary.csv"
+RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{OUTPUT_DIR}/relationship_boxplot_values.csv"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
@@ -907,6 +908,84 @@ def _summarize_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([summary, total_row], ignore_index=True)
 
 
+def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFrame:
+    """Return tidy rows for box plots split by relationship category and metric family."""
+
+    net_benefit_df = final_df[
+        [
+            "Mix ID",
+            "Scenario ID",
+            NET_BENEFIT_RELATIONSHIP_COLUMN,
+            "Physical - Min Net Benefit",
+            "Physical - Max Net Benefit",
+            "PLV - Min Net Benefit",
+            "PLV - Max Net Benefit",
+        ]
+    ].melt(
+        id_vars=["Mix ID", "Scenario ID", NET_BENEFIT_RELATIONSHIP_COLUMN],
+        value_vars=[
+            "Physical - Min Net Benefit",
+            "Physical - Max Net Benefit",
+            "PLV - Min Net Benefit",
+            "PLV - Max Net Benefit",
+        ],
+        var_name="Scenario Type",
+        value_name="Value",
+    )
+    net_benefit_df["Metric Family"] = "Net Benefit"
+    net_benefit_df["Relationship Code"] = net_benefit_df[NET_BENEFIT_RELATIONSHIP_COLUMN]
+    net_benefit_df["Relationship Description"] = net_benefit_df["Relationship Code"].map(NET_BENEFIT_RELATIONSHIP_LABELS)
+
+    benefit_per_dollar_df = final_df[
+        [
+            "Mix ID",
+            "Scenario ID",
+            BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
+            "Physical - Min Benefit Per Dollar",
+            "Physical - Max Benefit Per Dollar",
+            "PLV - Min Benefit Per Dollar",
+            "PLV - Max Benefit Per Dollar",
+        ]
+    ].melt(
+        id_vars=["Mix ID", "Scenario ID", BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
+        value_vars=[
+            "Physical - Min Benefit Per Dollar",
+            "Physical - Max Benefit Per Dollar",
+            "PLV - Min Benefit Per Dollar",
+            "PLV - Max Benefit Per Dollar",
+        ],
+        var_name="Scenario Type",
+        value_name="Value",
+    )
+    benefit_per_dollar_df["Metric Family"] = "Benefit Per Dollar"
+    benefit_per_dollar_df["Relationship Code"] = benefit_per_dollar_df[BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN]
+    benefit_per_dollar_df["Relationship Description"] = benefit_per_dollar_df["Relationship Code"].map(
+        BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS
+    )
+
+    boxplot_df = pd.concat([net_benefit_df, benefit_per_dollar_df], ignore_index=True)
+    boxplot_df["Scenario Group"] = np.where(
+        boxplot_df["Scenario Type"].str.startswith("Physical"),
+        "Physical Inspection",
+        "PLV",
+    )
+    boxplot_df["Scenario Variant"] = boxplot_df["Scenario Type"].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
+    boxplot_df = boxplot_df[
+        [
+            "Metric Family",
+            "Relationship Code",
+            "Relationship Description",
+            "Scenario Group",
+            "Scenario Variant",
+            "Mix ID",
+            "Scenario ID",
+            "Scenario Type",
+            "Value",
+        ]
+    ]
+    return boxplot_df
+
+
 
 def _final_scenario_component_arrow_schema(pa):
     return pa.schema(
@@ -1195,6 +1274,7 @@ def run_inspection_costs_workflow(
     scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
     long_scenarios_path = Path(LONG_SCENARIOS_PARQUET_PATH)
     relationship_summary_path = Path(RELATIONSHIP_SUMMARY_CSV_PATH)
+    relationship_boxplot_values_path = Path(RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
     detection_lookup_table = None
     scenario_df = None
     component_df = None
@@ -1268,6 +1348,10 @@ def run_inspection_costs_workflow(
     relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
     relationship_summary_df.to_csv(relationship_summary_path, index=False)
 
+    relationship_boxplot_df = _build_relationship_boxplot_dataframe(final_df)
+    relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
+    relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
+
     if not long_scenarios_path.exists() or not _parquet_file_has_columns(
         long_scenarios_path,
         [BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
@@ -1299,6 +1383,7 @@ def run_inspection_costs_workflow(
         "combined_df": combined_df,
         "final_df": final_df,
         "relationship_summary_df": relationship_summary_df,
+        "relationship_boxplot_df": relationship_boxplot_df,
         "long_df": long_df,
         "long_scenarios_path": long_scenarios_path,
         "regression_result": regression_result,
