@@ -26,7 +26,6 @@ MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
 PLV_COST_PER_TOTAL_CHIP = (11, 125)
-DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
 PLV_BASIS_COLUMN = "Cluster Size (N)"
 NET_BENEFIT_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
@@ -858,7 +857,6 @@ def add_cost_benefit_columns(
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
     phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
-    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
     plv_basis_column: str = PLV_BASIS_COLUMN,
 ) -> pd.DataFrame:
     result = summary_df.copy()
@@ -874,22 +872,22 @@ def add_cost_benefit_columns(
         + result["Total Clusters in Mix"] * result["Tests (n)"] * phys_inspection_salary_cost_per_tested_chip[1]
     )
     result["Physical - Min Net Benefit"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"] * dollars_per_chip_detected[0]
+        result["Physical Inspection - Total Diverted Chips Identified"]
         - result["Physical Inspection - Max Total Cost"]
     )
     result["Physical - Max Net Benefit"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"] * dollars_per_chip_detected[1]
+        result["Physical Inspection - Total Diverted Chips Identified"]
         - result["Physical Inspection - Min Total Cost"]
     )
 
     result["PLV - Min Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[0]
     result["PLV - Max Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[1]
     result["PLV - Min Net Benefit"] = (
-        result["PLV - Total Diverted Chips Identified"] * dollars_per_chip_detected[0]
+        result["PLV - Total Diverted Chips Identified"]
         - result["PLV - Max Total Cost"]
     )
     result["PLV - Max Net Benefit"] = (
-        result["PLV - Total Diverted Chips Identified"] * dollars_per_chip_detected[1]
+        result["PLV - Total Diverted Chips Identified"]
         - result["PLV - Min Total Cost"]
     )
     result[NET_BENEFIT_RELATIONSHIP_COLUMN] = _classify_net_benefit_relationship(result)
@@ -899,7 +897,6 @@ def add_cost_benefit_columns(
 
 def _build_long_scenarios_dataframe(
     final_df: pd.DataFrame,
-    dollars_per_chip_detected: tuple[float, float],
 ) -> pd.DataFrame:
     long_df = final_df.melt(
         id_vars=[column for column in final_df.columns if "Net Benefit" not in column],
@@ -912,24 +909,22 @@ def _build_long_scenarios_dataframe(
         long_df["Scenario Type"].str.startswith("Physical"),
         long_df["Physical Inspection - Total Diverted Chips Identified"],
         long_df["PLV - Total Diverted Chips Identified"],
-    ) * dollars_per_chip_detected[0]
+    )
     return long_df
 
 
 def _iter_long_scenarios_chunks(
     final_df: pd.DataFrame,
-    dollars_per_chip_detected: tuple[float, float],
     chunk_rows: int,
 ) -> Iterable[pd.DataFrame]:
     for start in range(0, len(final_df), chunk_rows):
         chunk = final_df.iloc[start : start + chunk_rows]
-        yield _build_long_scenarios_dataframe(chunk, dollars_per_chip_detected=dollars_per_chip_detected)
+        yield _build_long_scenarios_dataframe(chunk)
 
 
 def _write_long_scenarios_to_parquet(
     final_df: pd.DataFrame,
     parquet_path: Path,
-    dollars_per_chip_detected: tuple[float, float],
     chunk_rows: int,
 ) -> None:
     pq, pa = _import_pyarrow_parquet()
@@ -937,7 +932,6 @@ def _write_long_scenarios_to_parquet(
     try:
         for long_chunk in _iter_long_scenarios_chunks(
             final_df,
-            dollars_per_chip_detected=dollars_per_chip_detected,
             chunk_rows=chunk_rows,
         ):
             if long_chunk.empty:
@@ -948,10 +942,7 @@ def _write_long_scenarios_to_parquet(
             writer.write_table(table)
 
         if writer is None:
-            empty_long_df = _build_long_scenarios_dataframe(
-                final_df.iloc[0:0],
-                dollars_per_chip_detected=dollars_per_chip_detected,
-            )
+            empty_long_df = _build_long_scenarios_dataframe(final_df.iloc[0:0])
             empty_table = pa.Table.from_pandas(empty_long_df, preserve_index=False)
             writer = pq.ParquetWriter(str(parquet_path), empty_table.schema)
             writer.write_table(empty_table)
@@ -962,7 +953,6 @@ def _write_long_scenarios_to_parquet(
 
 def build_long_scenarios(
     final_df: Optional[pd.DataFrame] = None,
-    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
     parquet_path: Optional[str | Path] = LONG_SCENARIOS_PARQUET_PATH,
     materialize: bool = True,
     chunk_rows: int = LONG_SCENARIO_CHUNK_ROWS,
@@ -989,12 +979,11 @@ def build_long_scenarios(
         _write_long_scenarios_to_parquet(
             final_df,
             parquet_path,
-            dollars_per_chip_detected=dollars_per_chip_detected,
             chunk_rows=chunk_rows,
         )
         return None
 
-    long_df = _build_long_scenarios_dataframe(final_df, dollars_per_chip_detected=dollars_per_chip_detected)
+    long_df = _build_long_scenarios_dataframe(final_df)
     if parquet_path is not None:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"build_long_scenarios: writing table to {parquet_path}")
@@ -1082,7 +1071,6 @@ def run_inspection_costs_workflow(
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
     phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
-    dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
     regression_result_path: Optional[str | Path] = REGRESSION_RESULT_JSON_PATH,
 ) -> dict[str, object]:
     cluster_sizes = list(cluster_sizes)
@@ -1102,52 +1090,7 @@ def run_inspection_costs_workflow(
     relationship_summary_df = None
 
     print("Starting inspection costs workflow")
-    if not scenarios_combined_path.exists():
-        print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
-        detection_lookup_table = build_detection_lookup_table(
-            cluster_sizes=cluster_sizes,
-            K_vals=k_vals,
-            n_vals=n_vals,
-            m_vals=m_vals,
-        )
-        print(f"Detection lookup table rows: {len(detection_lookup_table)}")
-
-        print("Building normalized final scenarios")
-        scenario_df, component_df = build_scenarios(
-            cluster_sizes=cluster_sizes,
-            detection_lookup_table=detection_lookup_table,
-            k_vals=k_vals,
-            target_chips=target_chips,
-            steps=steps,
-            return_dataframe=True,
-        )
-        combined_df = merge_scenarios(scenario_df, component_df)
-        print(f"Scenario rows: {len(scenario_df)}")
-        print(f"Component rows: {len(component_df)}")
-        print(combined_df.head())
-
-        scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving combined scenarios to {scenarios_combined_path}")
-        combined_df.to_parquet(scenarios_combined_path, index=False)
-    else:
-        print(f"Loading cached combined scenarios from {scenarios_combined_path}")
-        combined_df = pd.read_parquet(scenarios_combined_path)
-
-    if not scenarios_costed_path.exists():
-        if combined_df is None:
-            raise ValueError("combined_df is required when costed scenarios are not cached")
-        print("Adding cost and benefit columns")
-        final_df = add_cost_benefit_columns(
-            combined_df,
-            phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-            phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
-            plv_cost_per_total_chip=plv_cost_per_total_chip,
-            dollars_per_chip_detected=dollars_per_chip_detected,
-        )
-        scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving final scenarios to {scenarios_costed_path}")
-        final_df.to_parquet(scenarios_costed_path, index=False)
-    else:
+    if scenarios_costed_path.exists():
         print(f"Loading cached costed scenarios from {scenarios_costed_path}")
         final_df = pd.read_parquet(scenarios_costed_path)
         if NET_BENEFIT_RELATIONSHIP_COLUMN not in final_df.columns:
@@ -1160,10 +1103,53 @@ def run_inspection_costs_workflow(
                 phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
                 phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
                 plv_cost_per_total_chip=plv_cost_per_total_chip,
-                dollars_per_chip_detected=dollars_per_chip_detected,
             )
             scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
             final_df.to_parquet(scenarios_costed_path, index=False)
+    else:
+        if not scenarios_combined_path.exists():
+            print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
+            detection_lookup_table = build_detection_lookup_table(
+                cluster_sizes=cluster_sizes,
+                K_vals=k_vals,
+                n_vals=n_vals,
+                m_vals=m_vals,
+            )
+            print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+
+            print("Building normalized final scenarios")
+            scenario_df, component_df = build_scenarios(
+                cluster_sizes=cluster_sizes,
+                detection_lookup_table=detection_lookup_table,
+                k_vals=k_vals,
+                target_chips=target_chips,
+                steps=steps,
+                return_dataframe=True,
+            )
+            combined_df = merge_scenarios(scenario_df, component_df)
+            print(f"Scenario rows: {len(scenario_df)}")
+            print(f"Component rows: {len(component_df)}")
+            print(combined_df.head())
+
+            scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"Saving combined scenarios to {scenarios_combined_path}")
+            combined_df.to_parquet(scenarios_combined_path, index=False)
+        else:
+            print(f"Loading cached combined scenarios from {scenarios_combined_path}")
+            combined_df = pd.read_parquet(scenarios_combined_path)
+
+        if combined_df is None:
+            raise ValueError("combined_df is required when costed scenarios are not cached")
+        print("Adding cost and benefit columns")
+        final_df = add_cost_benefit_columns(
+            combined_df,
+            phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
+            phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
+            plv_cost_per_total_chip=plv_cost_per_total_chip,
+        )
+        scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving final scenarios to {scenarios_costed_path}")
+        final_df.to_parquet(scenarios_costed_path, index=False)
 
     relationship_summary_df = _summarize_net_benefit_relationships(final_df)
     net_benefit_relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1176,7 +1162,6 @@ def run_inspection_costs_workflow(
         print("Building long scenarios table")
         long_df = build_long_scenarios(
             final_df,
-            dollars_per_chip_detected=dollars_per_chip_detected,
             parquet_path=long_scenarios_path,
             materialize=False,
         )
