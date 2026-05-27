@@ -309,7 +309,7 @@ def build_scenarios(
     steps: Optional[Iterable[float]] = None,
     output_parquet_path: Optional[str | Path] = SCENARIOS_PARQUET_PATH,
     return_dataframe: Optional[bool] = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> pd.DataFrame:
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
     print(f"build_scenarios: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
@@ -321,19 +321,12 @@ def build_scenarios(
         for cluster_size in cluster_sizes
     }
 
-    scenario_columns = [
+    scenario_component_columns = [
         "Mix ID",
         "Scenario ID",
         "Mix Description",
         "Total Clusters in Mix",
         "Scenario Component Count",
-        "K Combo",
-        "N Combo",
-    ]
-
-    component_columns = [
-        "Mix ID",
-        "Scenario ID",
         "K Combo",
         "N Combo",
         "Cluster Size (N)",
@@ -353,7 +346,7 @@ def build_scenarios(
 
     parquet_path = Path(output_parquet_path) if output_parquet_path is not None else None
     total_scenarios = 0
-    total_components = 0
+    total_scenario_component_rows = 0
 
     if parquet_path is not None:
         component_dataset_path = parquet_path
@@ -363,15 +356,15 @@ def build_scenarios(
             mix_id = mix_components[0]["Mix ID"]
             mix_parquet_path = _mix_parquet_path(component_dataset_path, mix_id)
             if mix_parquet_path.exists() and _component_mix_file_is_current_version(mix_parquet_path, pq):
-                mix_component_count = pq.ParquetFile(mix_parquet_path).metadata.num_rows
+                mix_scenario_component_count = pq.ParquetFile(mix_parquet_path).metadata.num_rows
                 mix_summary_count = _count_scenarios_in_component_file(mix_parquet_path, pq)
                 mix_fragment_count = 0
                 print(
                     f"build_scenarios: skipping {mix_id} (already written); "
-                    f"scenario rows={mix_summary_count}, component rows={mix_component_count}"
+                    f"scenario rows={mix_summary_count}, scenario-component rows={mix_scenario_component_count}"
                 )
             else:
-                mix_scenario_records, mix_component_records = _build_mix_records(
+                mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
                     mix_components=mix_components,
                     detection_grouped=detection_grouped,
                     k_options_by_cluster_size=k_options_by_cluster_size,
@@ -380,88 +373,61 @@ def build_scenarios(
                 mix_component_fragments = _write_scenario_dataset_to_parquet(
                     dataset_path=component_dataset_path,
                     mix_id=mix_id,
-                    records=mix_component_records,
+                    records=mix_scenario_component_records,
                 )
-                mix_summary_count = len(mix_scenario_records)
-                mix_component_count = len(mix_component_records)
+                mix_summary_count = mix_scenario_count
                 mix_fragment_count = len(mix_component_fragments)
                 print(
                     f"build_scenarios: wrote {mix_id}; "
-                    f"scenario rows added={mix_summary_count}, component rows added={mix_component_count}, "
+                    f"scenario rows added={mix_scenario_count}, scenario-component rows added={mix_scenario_component_count}, "
                     f"fragment files written={mix_fragment_count}"
                 )
             total_scenarios += mix_summary_count
-            total_components += mix_component_count
+            total_scenario_component_rows += mix_scenario_component_count
             print(
                 f"build_scenarios: finished {mix_id}; total scenario rows={total_scenarios}, "
-                f"total component rows={total_components}"
+                f"total scenario-component rows={total_scenario_component_rows}"
             )
 
         print(
             f"build_scenarios: completed with {total_scenarios} new scenario rows "
-            f"and {total_components} new component rows"
+            f"and {total_scenario_component_rows} new scenario-component rows"
         )
 
         if return_dataframe:
-            component_df = pd.read_parquet(component_dataset_path)
-            scenario_df = _derive_scenario_summary_from_components(component_df)
-            return scenario_df, component_df
-        return pd.DataFrame(columns=scenario_columns), pd.DataFrame(columns=component_columns)
+            return pd.read_parquet(component_dataset_path)
+        return pd.DataFrame(columns=scenario_component_columns)
 
-    scenario_records: list[tuple[object, ...]] = []
-    component_records: list[tuple[object, ...]] = []
+    scenario_component_records: list[tuple[object, ...]] = []
     for mix_components in mix_data:
-        mix_scenario_records, mix_component_records = _build_mix_records(
+        mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
             mix_components=mix_components,
             detection_grouped=detection_grouped,
             k_options_by_cluster_size=k_options_by_cluster_size,
             target_chips=target_chips,
         )
-        total_scenarios += len(mix_scenario_records)
-        total_components += len(mix_component_records)
         if return_dataframe:
-            scenario_records.extend(mix_scenario_records)
-            component_records.extend(mix_component_records)
+            scenario_component_records.extend(mix_scenario_component_records)
+        total_scenarios += mix_scenario_count
+        total_scenario_component_rows += mix_scenario_component_count
         print(
             f"build_scenarios: finished {mix_components[0]['Mix ID']}; "
-            f"scenario rows added={len(mix_scenario_records)}, component rows added={len(mix_component_records)}, "
-            f"total new scenario rows={total_scenarios}, total new component rows={total_components}"
+            f"scenario-component rows added={mix_scenario_component_count}, "
+            f"total new scenario rows={total_scenarios}, total new scenario-component rows={total_scenario_component_rows}"
         )
 
     print(
         f"build_scenarios: completed with {total_scenarios} new scenario rows "
-        f"and {total_components} new component rows"
+        f"and {total_scenario_component_rows} new scenario-component rows"
     )
 
     if return_dataframe:
-        scenario_df = pd.DataFrame.from_records(scenario_records, columns=scenario_columns)
-        component_df = pd.DataFrame.from_records(component_records, columns=component_columns)
-    else:
-        scenario_df = pd.DataFrame(columns=scenario_columns)
-        component_df = pd.DataFrame(columns=component_columns)
-    return scenario_df, component_df
+        return pd.DataFrame.from_records(scenario_component_records, columns=scenario_component_columns)
+    return pd.DataFrame(columns=scenario_component_columns)
 
 
-def merge_scenarios(
-    scenario_df: Optional[pd.DataFrame] = None,
-    component_df: Optional[pd.DataFrame] = None,
-) -> pd.DataFrame:
-    if component_df is None:
-        if scenario_df is None:
-            return pd.DataFrame()
-        component_df = scenario_df
-        scenario_df = None
-
-    if scenario_df is None or scenario_df.empty:
-        scenario_df = _derive_scenario_summary_from_components(component_df)
-    if component_df.empty:
-        return scenario_df.copy()
-
-    return component_df.merge(scenario_df, on="Scenario ID", how="left", validate="many_to_one")
-
-
-def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.DataFrame:
-    if component_df.empty:
+def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame) -> pd.DataFrame:
+    if scenario_component_df.empty:
         return pd.DataFrame(
             columns=[
                 "Mix ID",
@@ -474,7 +440,9 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
             ]
         )
 
-    summary_source = component_df.loc[:, ["Scenario ID", "Mix ID", "K Combo", "N Combo", "Cluster Size (N)", "Number of Clusters"]].copy()
+    summary_source = scenario_component_df.loc[
+        :, ["Scenario ID", "Mix ID", "K Combo", "N Combo", "Cluster Size (N)", "Number of Clusters"]
+    ].copy()
     summary_source.sort_values(["Scenario ID", "Cluster Size (N)"], inplace=True)
     summary_source["_component_label"] = (
         summary_source["Number of Clusters"].astype(str)
@@ -487,7 +455,7 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
     total_scenarios = grouped.ngroups
     print(
         f"_derive_scenario_summary_from_components: deriving {total_scenarios} scenario summaries "
-        f"from {len(component_df)} component rows"
+        f"from {len(scenario_component_df)} scenario-component rows"
     )
 
     scenario_summary = grouped.agg(
@@ -530,6 +498,9 @@ def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
     expected_columns = [
         "Mix ID",
         "Scenario ID",
+        "Mix Description",
+        "Total Clusters in Mix",
+        "Scenario Component Count",
         "K Combo",
         "N Combo",
         "Cluster Size (N)",
@@ -587,12 +558,12 @@ def _build_mix_records(
     target_chips: int,
     emit_scenario: Optional[callable] = None,
     skip_scenarios: int = 0,
-) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
-    scenario_records: list[tuple[object, ...]] = []
-    component_records: list[tuple[object, ...]] = []
+) -> tuple[list[tuple[object, ...]], int, int]:
+    scenario_component_records: list[tuple[object, ...]] = []
     mix_id = mix_components[0]["Mix ID"]
     mix_description = build_mix_description(mix_components)
     total_clusters_in_mix = sum(component["Number of Clusters"] for component in mix_components)
+    scenario_component_count = len(mix_components)
     print(
         f"build_scenarios: processing {mix_id} ({mix_description}) "
         f"with {len(mix_components)} components and {total_clusters_in_mix} total clusters"
@@ -623,17 +594,7 @@ def _build_mix_records(
                 if scenario_counter <= skip_scenarios:
                     continue
                 scenario_id = f"{mix_id}_K{'-'.join(map(str, k_combo))}_n{'-'.join(map(str, n_combo))}"
-
-                scenario_row = (
-                    mix_id,
-                    scenario_id,
-                    mix_description,
-                    total_clusters_in_mix,
-                    len(mix_components),
-                    "-".join(map(str, k_combo)),
-                    "-".join(map(str, n_combo)),
-                )
-                component_rows: list[tuple[object, ...]] = []
+                flat_rows: list[tuple[object, ...]] = []
                 for (N_comp, num_clusters_comp, _weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
                     detection_info_list = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), [])
 
@@ -644,10 +605,13 @@ def _build_mix_records(
                         plv_p_detect,
                         plv_identified_per_cluster,
                     ) in detection_info_list:
-                        component_rows.append(
+                        flat_rows.append(
                             (
                                 mix_id,
                                 scenario_id,
+                                mix_description,
+                                total_clusters_in_mix,
+                                scenario_component_count,
                                 "-".join(map(str, k_combo)),
                                 "-".join(map(str, n_combo)),
                                 N_comp,
@@ -664,25 +628,36 @@ def _build_mix_records(
                         )
 
                 if emit_scenario is not None:
-                    emit_scenario(scenario_row, component_rows)
+                    emit_scenario(
+                        (
+                            mix_id,
+                            scenario_id,
+                            mix_description,
+                            total_clusters_in_mix,
+                            scenario_component_count,
+                            "-".join(map(str, k_combo)),
+                            "-".join(map(str, n_combo)),
+                        ),
+                        flat_rows,
+                    )
                 else:
-                    scenario_records.append(scenario_row)
-                    component_records.extend(component_rows)
+                    scenario_component_records.extend(flat_rows)
 
                 if n_combo_count % 1000 == 0:
                     print(
                         f"build_scenarios: {mix_id} processed {combo_count} K combinations and "
-                        f"{n_combo_count} n combinations; scenario rows so far for mix={len(scenario_records)}, "
-                        f"component rows so far for mix={len(component_records)}"
+                        f"{n_combo_count} n combinations; scenario rows so far for mix={scenario_counter}, "
+                        f"scenario-component rows so far for mix={len(scenario_component_records)}"
                     )
 
             if combo_count % 1000 == 0:
                 print(
                     f"build_scenarios: {mix_id} processed {combo_count} K combinations; "
-                    f"scenario rows so far for mix={len(scenario_records)}, component rows so far for mix={len(component_records)}"
+                    f"scenario rows so far for mix={scenario_counter}, "
+                    f"scenario-component rows so far for mix={len(scenario_component_records)}"
                 )
 
-    return scenario_records, component_records
+    return scenario_component_records, scenario_counter, len(scenario_component_records)
 
 
 def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
@@ -1199,6 +1174,9 @@ def _final_scenario_component_arrow_schema(pa):
         [
             ("Mix ID", pa.string()),
             ("Scenario ID", pa.string()),
+            ("Mix Description", pa.string()),
+            ("Total Clusters in Mix", pa.int64()),
+            ("Scenario Component Count", pa.int64()),
             ("K Combo", pa.string()),
             ("N Combo", pa.string()),
             ("Cluster Size (N)", pa.int64()),
@@ -1315,9 +1293,7 @@ def run_inspection_costs_workflow(
     relationship_summary_path = Path(RELATIONSHIP_SUMMARY_CSV_PATH)
     relationship_boxplot_values_path = Path(RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
     detection_lookup_table = None
-    scenario_df = None
-    component_df = None
-    combined_df = None
+    scenario_component_df = None
     final_df = None
     relationship_summary_df = None
     relationship_boxplot_df = None
@@ -1348,8 +1324,8 @@ def run_inspection_costs_workflow(
             )
             print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
-            print("Building normalized final scenarios")
-            scenario_df, component_df = build_scenarios(
+            print("Building scenario-component rows")
+            scenario_component_df = build_scenarios(
                 cluster_sizes=cluster_sizes,
                 detection_lookup_table=detection_lookup_table,
                 k_vals=k_vals,
@@ -1357,23 +1333,21 @@ def run_inspection_costs_workflow(
                 steps=steps,
                 return_dataframe=True,
             )
-            combined_df = merge_scenarios(scenario_df, component_df)
-            print(f"Scenario rows: {len(scenario_df)}")
-            print(f"Component rows: {len(component_df)}")
-            print(combined_df.head())
+            print(f"Scenario-component rows: {len(scenario_component_df)}")
+            print(scenario_component_df.head())
 
             scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"Saving combined scenarios to {scenarios_combined_path}")
-            combined_df.to_parquet(scenarios_combined_path, index=False)
+            print(f"Saving scenario-component rows to {scenarios_combined_path}")
+            scenario_component_df.to_parquet(scenarios_combined_path, index=False)
         else:
-            print(f"Loading cached combined scenarios from {scenarios_combined_path}")
-            combined_df = pd.read_parquet(scenarios_combined_path)
+            print(f"Loading cached scenario-component rows from {scenarios_combined_path}")
+            scenario_component_df = pd.read_parquet(scenarios_combined_path)
 
-        if combined_df is None:
-            raise ValueError("combined_df is required when costed scenarios are not cached")
+        if scenario_component_df is None:
+            raise ValueError("scenario_component_df is required when costed scenarios are not cached")
         print("Adding cost and benefit columns")
         final_df = add_cost_benefit_columns(
-            combined_df,
+            scenario_component_df,
             phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
             phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
             plv_cost_per_total_chip=plv_cost_per_total_chip,
@@ -1395,9 +1369,7 @@ def run_inspection_costs_workflow(
         relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
     print("Inspection costs workflow complete")
     return {
-        "scenario_df": scenario_df,
-        "component_df": component_df,
-        "combined_df": combined_df,
+        "scenario_component_df": scenario_component_df,
         "final_df": final_df,
         "relationship_summary_df": relationship_summary_df,
         "relationship_boxplot_df": relationship_boxplot_df,
