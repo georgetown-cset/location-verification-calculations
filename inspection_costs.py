@@ -326,6 +326,8 @@ def build_scenarios(
         "Scenario ID",
         "Mix Description",
         "Total Clusters in Mix",
+        "Total Tests",
+        "Total Component Chips",
         "Scenario Component Count",
         "K Combo",
         "N Combo",
@@ -500,6 +502,8 @@ def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
         "Scenario ID",
         "Mix Description",
         "Total Clusters in Mix",
+        "Total Tests",
+        "Total Component Chips",
         "Scenario Component Count",
         "K Combo",
         "N Combo",
@@ -611,6 +615,8 @@ def _build_mix_records(
                                 scenario_id,
                                 mix_description,
                                 total_clusters_in_mix,
+                                num_clusters_comp * n_val,
+                                num_clusters_comp * N_comp,
                                 scenario_component_count,
                                 "-".join(map(str, k_combo)),
                                 "-".join(map(str, n_combo)),
@@ -1176,6 +1182,8 @@ def _final_scenario_component_arrow_schema(pa):
             ("Scenario ID", pa.string()),
             ("Mix Description", pa.string()),
             ("Total Clusters in Mix", pa.int64()),
+            ("Total Tests", pa.int64()),
+            ("Total Component Chips", pa.int64()),
             ("Scenario Component Count", pa.int64()),
             ("K Combo", pa.string()),
             ("N Combo", pa.string()),
@@ -1204,6 +1212,8 @@ def _scenarios_arrow_schema(pa):
             ("Number of Clusters", pa.int64()),
             ("Mix Description", pa.string()),
             ("Total Clusters in Mix", pa.int64()),
+            ("Total Tests", pa.int64()),
+            ("Total Component Chips", pa.int64()),
             ("Tests (n)", pa.int64()),
             ("Share Diverted", pa.float64()),
             ("Chip-level Miss Prob (m)", pa.float64()),
@@ -1228,12 +1238,12 @@ def add_cost_benefit_columns(
     plv_cost_basis = result[plv_basis_column] if plv_basis_column in result.columns else result["Total Clusters in Mix"]
 
     result["Physical Inspection - Min Total Cost"] = (
-        result["Total Clusters in Mix"] * phys_inspection_travel_cost_per_inspection[0]
-        + result["Total Clusters in Mix"] * result["Tests (n)"] * phys_inspection_salary_cost_per_tested_chip[0]
+        result["Number of Clusters"] * phys_inspection_travel_cost_per_inspection[0]
+        + result["Total Tests"] * phys_inspection_salary_cost_per_tested_chip[0]
     )
     result["Physical Inspection - Max Total Cost"] = (
-        result["Total Clusters in Mix"] * phys_inspection_travel_cost_per_inspection[1]
-        + result["Total Clusters in Mix"] * result["Tests (n)"] * phys_inspection_salary_cost_per_tested_chip[1]
+        result["Number of Clusters"] * phys_inspection_travel_cost_per_inspection[1]
+        + result["Total Tests"] * phys_inspection_salary_cost_per_tested_chip[1]
     )
     result["Physical - Min Net Benefit"] = (
         result["Physical Inspection - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[0]
