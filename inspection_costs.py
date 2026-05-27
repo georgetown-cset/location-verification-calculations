@@ -312,30 +312,44 @@ def build_final_scenario_tables(
 
     if parquet_path is not None:
         component_dataset_path = _scenario_component_dataset_path(parquet_path)
-        _clear_parquet_dataset(component_dataset_path)
+        _ensure_final_scenarios_dataset_path(component_dataset_path)
+        pq, _pa = _import_pyarrow_parquet()
         for mix_components in mix_data:
             mix_id = mix_components[0]["Mix ID"]
-            mix_scenario_records, mix_component_records = _build_final_scenario_records_for_mix(
-                mix_components=mix_components,
-                detection_grouped=detection_grouped,
-                k_options_by_cluster_size=k_options_by_cluster_size,
-                target_chips=target_chips,
-            )
-            mix_component_fragments = _write_final_scenario_dataset_to_parquet(
-                dataset_path=component_dataset_path,
-                mix_id=mix_id,
-                records=mix_component_records,
-            )
-            mix_summary_count = len(mix_scenario_records)
-            mix_component_count = len(mix_component_records)
-            mix_fragment_count = len(mix_component_fragments)
+            mix_parquet_path = _mix_parquet_path(component_dataset_path, mix_id)
+            if mix_parquet_path.exists() and _component_mix_file_is_current_version(mix_parquet_path, pq):
+                mix_component_count = pq.ParquetFile(mix_parquet_path).metadata.num_rows
+                mix_summary_count = _count_scenarios_in_component_file(mix_parquet_path, pq)
+                mix_fragment_count = 0
+                print(
+                    f"build_final_scenario_tables: reusing existing {mix_id}; "
+                    f"scenario rows={mix_summary_count}, component rows={mix_component_count}"
+                )
+            else:
+                mix_scenario_records, mix_component_records = _build_final_scenario_records_for_mix(
+                    mix_components=mix_components,
+                    detection_grouped=detection_grouped,
+                    k_options_by_cluster_size=k_options_by_cluster_size,
+                    target_chips=target_chips,
+                )
+                mix_component_fragments = _write_final_scenario_dataset_to_parquet(
+                    dataset_path=component_dataset_path,
+                    mix_id=mix_id,
+                    records=mix_component_records,
+                )
+                mix_summary_count = len(mix_scenario_records)
+                mix_component_count = len(mix_component_records)
+                mix_fragment_count = len(mix_component_fragments)
+                print(
+                    f"build_final_scenario_tables: wrote {mix_id}; "
+                    f"scenario rows added={mix_summary_count}, component rows added={mix_component_count}, "
+                    f"fragment files written={mix_fragment_count}"
+                )
             total_scenarios += mix_summary_count
             total_components += mix_component_count
             print(
-                f"build_final_scenario_tables: finished {mix_id}; "
-                f"scenario rows added={mix_summary_count}, component rows added={mix_component_count}, "
-                f"fragment files written={mix_fragment_count}, total new scenario rows={total_scenarios}, "
-                f"total new component rows={total_components}"
+                f"build_final_scenario_tables: finished {mix_id}; total scenario rows={total_scenarios}, "
+                f"total component rows={total_components}"
             )
 
         print(
@@ -437,40 +451,61 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
             ]
         )
 
-    scenario_rows = []
-    grouped = component_df.sort_values(["Scenario ID", "Cluster Size (N)"]).groupby("Scenario ID", sort=False)
+    summary_source = component_df.loc[:, ["Scenario ID", "Cluster Size (N)", "Number of Clusters"]].copy()
+    summary_source.sort_values(["Scenario ID", "Cluster Size (N)"], inplace=True)
+    summary_source["_component_label"] = (
+        summary_source["Number of Clusters"].astype(str)
+        + "x(N="
+        + summary_source["Cluster Size (N)"].astype(str)
+        + ")"
+    )
+
+    grouped = summary_source.groupby("Scenario ID", sort=False, observed=True)
     total_scenarios = grouped.ngroups
-    progress_interval = max(1, total_scenarios // 10)
     print(
         f"_derive_scenario_summary_from_components: deriving {total_scenarios} scenario summaries "
         f"from {len(component_df)} component rows"
     )
-    for scenario_id, group in grouped:
-        mix_id, k_combo, n_combo = _parse_scenario_id(scenario_id)
-        mix_description = " + ".join(
-            f"{int(row['Number of Clusters'])}x(N={int(row['Cluster Size (N)'])})"
-            for _, row in group.iterrows()
-        )
-        scenario_rows.append(
-            {
-                "Mix ID": mix_id,
-                "Scenario ID": scenario_id,
-                "Mix Description": mix_description,
-                "Total Clusters in Mix": int(group["Number of Clusters"].sum()),
-                "Scenario Component Count": int(len(group)),
-                "K Combo": k_combo,
-                "N Combo": n_combo,
-            }
-        )
-        if len(scenario_rows) % progress_interval == 0 or len(scenario_rows) == total_scenarios:
-            print(
-                f"_derive_scenario_summary_from_components: built {len(scenario_rows)}/{total_scenarios} scenario summaries"
-            )
+
+    scenario_summary = grouped.agg(
+        Mix_Description=("_component_label", " + ".join),
+        Total_Clusters_in_Mix=("Number of Clusters", "sum"),
+        Scenario_Component_Count=("Number of Clusters", "size"),
+    ).reset_index()
+
+    parsed_ids = scenario_summary["Scenario ID"].str.extract(
+        r"(?P<mix_id>.+)_K(?P<k_combo>[\d-]+)_n(?P<n_combo>[\d-]+)$"
+    )
+    if parsed_ids.isnull().any().any():
+        invalid_ids = scenario_summary.loc[parsed_ids.isnull().any(axis=1), "Scenario ID"].head(5).tolist()
+        raise ValueError(f"Invalid Scenario ID format encountered while deriving summaries: {invalid_ids}")
+
+    scenario_summary = pd.concat([parsed_ids, scenario_summary], axis=1).rename(
+        columns={
+            "mix_id": "Mix ID",
+            "k_combo": "K Combo",
+            "n_combo": "N Combo",
+            "Mix_Description": "Mix Description",
+            "Total_Clusters_in_Mix": "Total Clusters in Mix",
+            "Scenario_Component_Count": "Scenario Component Count",
+        }
+    )
+    scenario_summary = scenario_summary[
+        [
+            "Mix ID",
+            "Scenario ID",
+            "Mix Description",
+            "Total Clusters in Mix",
+            "Scenario Component Count",
+            "K Combo",
+            "N Combo",
+        ]
+    ]
 
     print(
-        f"_derive_scenario_summary_from_components: completed {len(scenario_rows)} scenario summaries"
+        f"_derive_scenario_summary_from_components: completed {len(scenario_summary)} scenario summaries"
     )
-    return pd.DataFrame(scenario_rows)
+    return scenario_summary
 
 
 def _parse_scenario_id(scenario_id: str) -> tuple[str, str, str]:
@@ -532,12 +567,33 @@ def _scenario_component_dataset_path(parquet_path: Path) -> Path:
     return parquet_path / FINAL_SCENARIO_COMPONENT_DATASET_NAME
 
 
-def _clear_parquet_dataset(dataset_path: Path) -> None:
-    if not dataset_path.exists():
-        return
-    for parquet_path in dataset_path.rglob("*.parquet"):
-        if parquet_path.is_file():
-            parquet_path.unlink()
+def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
+    expected_columns = [
+        "Scenario ID",
+        "Cluster Size (N)",
+        "Bad Records (K)",
+        "Number of Clusters",
+        "Tests (n)",
+        "Physical Inspection - P(Detect)",
+        "Physical Inspection - Diverted Chips Identified",
+        "PLV - P(Detect)",
+        "PLV - Diverted Chips Identified",
+        "Physical Inspection - Total Diverted Chips Identified",
+        "PLV - Total Diverted Chips Identified",
+    ]
+    try:
+        parquet_file = pq.ParquetFile(mix_parquet_path)
+    except Exception:
+        return False
+    return list(parquet_file.schema.names) == expected_columns
+
+
+def _count_scenarios_in_component_file(mix_parquet_path: Path, pq) -> int:
+    parquet_file = pq.ParquetFile(mix_parquet_path)
+    scenario_ids: set[str] = set()
+    for batch in parquet_file.iter_batches(columns=["Scenario ID"]):
+        scenario_ids.update(str(scenario_id) for scenario_id in batch.column(0).to_pylist())
+    return len(scenario_ids)
 
 
 def _mix_dataset_dir(dataset_path: Path, mix_id: str) -> Path:
