@@ -13,11 +13,14 @@ import pandas as pd
 
 
 TARGET_CHIPS = 2_000_000
-DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
-SCENARIOS_PARQUET_PATH = "data/scenarios"
-LONG_SCENARIOS_PARQUET_PATH = "data/long_scenarios.parquet"
-REGRESSION_RESULT_JSON_PATH = "data/regression_result.json"
-FINAL_SCENARIO_COMPONENT_DATASET_NAME = "scenario_components"
+OUTPUT_DIR = "output"
+DATA_SAVED_DIR = "data/saved"
+DETECTION_LOOKUP_TABLE_PARQUET_PATH = f"{DATA_SAVED_DIR}/detection_lookup_table.parquet"
+SCENARIOS_PARQUET_PATH = "data/scenario_components"
+SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
+SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
+LONG_SCENARIOS_PARQUET_PATH = f"{DATA_SAVED_DIR}/long_scenarios.parquet"
+REGRESSION_RESULT_JSON_PATH = f"{OUTPUT_DIR}/regression_result.json"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
@@ -328,7 +331,7 @@ def build_scenarios(
     total_components = 0
 
     if parquet_path is not None:
-        component_dataset_path = _scenario_component_dataset_path(parquet_path)
+        component_dataset_path = parquet_path
         _ensure_scenarios_dataset_path(component_dataset_path)
         pq, _pa = _import_pyarrow_parquet()
         for mix_components in mix_data:
@@ -496,10 +499,6 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
         f"_derive_scenario_summary_from_components: completed {len(scenario_summary)} scenario summaries"
     )
     return scenario_summary
-
-
-def _scenario_component_dataset_path(parquet_path: Path) -> Path:
-    return parquet_path / FINAL_SCENARIO_COMPONENT_DATASET_NAME
 
 
 def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
@@ -671,13 +670,6 @@ def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
 
 def _empty_arrow_table(pa, schema):
     return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
-
-
-def _scenarios_combined_parquet_path(base_path: Path) -> Path:
-    return base_path / "scenarios_combined.parquet"
-
-def _scenarios_costed_parquet_path(base_path: Path) -> Path:
-    return base_path / "scenarios_costed.parquet"
 
 def _ensure_scenarios_dataset_path(parquet_path: Path) -> None:
     if parquet_path.exists() and not parquet_path.is_dir():
@@ -996,8 +988,8 @@ def run_inspection_costs_workflow(
     n_vals = list(n_vals)
     m_vals = list(m_vals)
     steps = list(steps) if steps is not None else None
-    scenarios_combined_path = _scenarios_combined_parquet_path(Path(SCENARIOS_PARQUET_PATH))
-    scenarios_costed_path = _scenarios_costed_parquet_path(Path(SCENARIOS_PARQUET_PATH))
+    scenarios_combined_path = Path(SCENARIOS_COMBINED_PARQUET_PATH)
+    scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
     long_scenarios_path = Path(LONG_SCENARIOS_PARQUET_PATH)
     detection_lookup_table = None
     scenario_df = None
