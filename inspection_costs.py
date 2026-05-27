@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import itertools
 import math
+from collections import Counter
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -751,6 +752,17 @@ def _parquet_file_has_columns(parquet_path: Path, expected_columns: Iterable[str
     return all(column in schema_names for column in expected_columns)
 
 
+def _iter_parquet_batches(
+    parquet_path: Path,
+    columns: Iterable[str],
+    batch_size: int = 65_536,
+) -> Iterable[pd.DataFrame]:
+    pq, _pa = _import_pyarrow_parquet()
+    parquet_file = pq.ParquetFile(parquet_path)
+    for batch in parquet_file.iter_batches(columns=list(columns), batch_size=batch_size):
+        yield batch.to_pandas()
+
+
 def _classify_net_benefit_relationship(summary_df: pd.DataFrame) -> pd.Series:
     """Classify the physical-inspection and PLV net benefit intervals.
 
@@ -908,6 +920,68 @@ def _summarize_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([summary, total_row], ignore_index=True)
 
 
+def _summarize_relationships_from_parquet(
+    parquet_path: Path,
+    batch_size: int = 65_536,
+) -> pd.DataFrame:
+    print(f"Summarizing relationship counts from cached costed parquet: {parquet_path}")
+    net_benefit_counts: Counter[str] = Counter()
+    benefit_per_dollar_counts: Counter[str] = Counter()
+
+    for batch_df in _iter_parquet_batches(
+        parquet_path,
+        columns=[NET_BENEFIT_RELATIONSHIP_COLUMN, BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
+        batch_size=batch_size,
+    ):
+        net_benefit_counts.update(batch_df[NET_BENEFIT_RELATIONSHIP_COLUMN].astype(str).tolist())
+        benefit_per_dollar_counts.update(batch_df[BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN].astype(str).tolist())
+
+    net_benefit_summary = pd.DataFrame(
+        {
+            "Relationship Code": list(NET_BENEFIT_RELATIONSHIP_LABELS.keys()),
+            "Net Benefit Relationship Description": list(NET_BENEFIT_RELATIONSHIP_LABELS.values()),
+            "Net Benefit Scenario Count": [
+                int(net_benefit_counts.get(code, 0)) for code in NET_BENEFIT_RELATIONSHIP_LABELS.keys()
+            ],
+        }
+    )
+    benefit_per_dollar_summary = pd.DataFrame(
+        {
+            "Relationship Code": list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys()),
+            "Benefit Per Dollar Relationship Description": list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.values()),
+            "Benefit Per Dollar Scenario Count": [
+                int(benefit_per_dollar_counts.get(code, 0)) for code in BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys()
+            ],
+        }
+    )
+
+    summary = net_benefit_summary.merge(
+        benefit_per_dollar_summary,
+        on="Relationship Code",
+        how="outer",
+        validate="one_to_one",
+    )
+    summary = summary[
+        [
+            "Relationship Code",
+            "Net Benefit Relationship Description",
+            "Benefit Per Dollar Relationship Description",
+            "Net Benefit Scenario Count",
+            "Benefit Per Dollar Scenario Count",
+        ]
+    ]
+    total_row = pd.DataFrame(
+        {
+            "Relationship Code": ["Total"],
+            "Net Benefit Relationship Description": ["All scenarios"],
+            "Benefit Per Dollar Relationship Description": ["All scenarios"],
+            "Net Benefit Scenario Count": [int(sum(net_benefit_counts.values()))],
+            "Benefit Per Dollar Scenario Count": [int(sum(benefit_per_dollar_counts.values()))],
+        }
+    )
+    return pd.concat([summary, total_row], ignore_index=True)
+
+
 def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFrame:
     """Return tidy rows for box plots split by relationship category and metric family."""
 
@@ -992,6 +1066,85 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
     output_columns.extend(["Scenario ID", "Scenario Type", "Value"])
     boxplot_df = boxplot_df[output_columns]
     return boxplot_df
+
+
+def _write_relationship_boxplot_values_from_parquet(
+    parquet_path: Path,
+    output_csv_path: Path,
+    batch_size: int = 65_536,
+) -> None:
+    print(f"Building relationship boxplot source from cached costed parquet: {parquet_path}")
+    file_columns = set(_parquet_file_columns(parquet_path))
+    columns = [
+        column
+        for column in [
+            "Mix ID",
+            "Scenario ID",
+            NET_BENEFIT_RELATIONSHIP_COLUMN,
+            BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
+            *LONG_SCENARIO_VALUE_VARS,
+        ]
+        if column in file_columns
+    ]
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    first_write = True
+    for batch_df in _iter_parquet_batches(parquet_path, columns=columns, batch_size=batch_size):
+        boxplot_df = _build_relationship_boxplot_dataframe(batch_df)
+        boxplot_df.to_csv(output_csv_path, index=False, mode="a", header=first_write)
+        print(f"Appended {len(boxplot_df)} boxplot rows to {output_csv_path}")
+        first_write = False
+    if first_write:
+        empty_columns = [
+            "Metric Family",
+            "Relationship Code",
+            "Relationship Description",
+            "Scenario Group",
+            "Scenario Variant",
+            "Scenario ID",
+            "Scenario Type",
+            "Value",
+        ]
+        if "Mix ID" in file_columns:
+            empty_columns.insert(5, "Mix ID")
+        pd.DataFrame(columns=empty_columns).to_csv(output_csv_path, index=False)
+        print(f"Wrote empty relationship boxplot source to {output_csv_path}")
+
+
+def _parquet_file_columns(parquet_path: Path) -> list[str]:
+    pq, _pa = _import_pyarrow_parquet()
+    parquet_file = pq.ParquetFile(parquet_path)
+    return list(parquet_file.schema.names)
+
+
+def _write_long_scenarios_to_parquet_from_parquet(
+    source_parquet_path: Path,
+    parquet_path: Path,
+    chunk_rows: int = LONG_SCENARIO_CHUNK_ROWS,
+) -> None:
+    print(f"Building long scenarios parquet from cached costed parquet: {source_parquet_path}")
+    pq, pa = _import_pyarrow_parquet()
+    columns = _parquet_file_columns(source_parquet_path)
+    writer = None
+    try:
+        for batch_df in _iter_parquet_batches(source_parquet_path, columns=columns, batch_size=chunk_rows):
+            long_chunk = _build_long_scenarios_dataframe(batch_df)
+            if long_chunk.empty:
+                continue
+            table = pa.Table.from_pandas(long_chunk, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(str(parquet_path), table.schema)
+            writer.write_table(table)
+            print(f"Appended {len(long_chunk)} long-scenario rows to {parquet_path}")
+
+        if writer is None:
+            empty_long_df = _build_long_scenarios_dataframe(pd.DataFrame(columns=columns))
+            empty_table = pa.Table.from_pandas(empty_long_df, preserve_index=False)
+            writer = pq.ParquetWriter(str(parquet_path), empty_table.schema)
+            writer.write_table(empty_table)
+            print(f"Wrote empty long-scenarios parquet to {parquet_path}")
+    finally:
+        if writer is not None:
+            writer.close()
 
 
 
@@ -1289,16 +1442,18 @@ def run_inspection_costs_workflow(
     combined_df = None
     final_df = None
     relationship_summary_df = None
+    relationship_boxplot_df = None
 
     print("Starting inspection costs workflow")
     if scenarios_costed_path.exists():
         print(f"Loading cached costed scenarios from {scenarios_costed_path}")
-        final_df = pd.read_parquet(scenarios_costed_path)
-        if NET_BENEFIT_RELATIONSHIP_COLUMN not in final_df.columns or BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN not in final_df.columns:
+        cached_costed_columns = set(_parquet_file_columns(scenarios_costed_path))
+        if NET_BENEFIT_RELATIONSHIP_COLUMN not in cached_costed_columns or BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN not in cached_costed_columns:
             print(
                 "Cached costed scenarios are missing one or more relationship columns; "
                 "recomputing and saving refreshed output"
             )
+            final_df = pd.read_parquet(scenarios_costed_path)
             final_df = add_cost_benefit_columns(
                 final_df,
                 phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
@@ -1307,6 +1462,59 @@ def run_inspection_costs_workflow(
             )
             scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
             final_df.to_parquet(scenarios_costed_path, index=False)
+
+            print(f"Generating relationship summary at {relationship_summary_path}")
+            relationship_summary_df = _summarize_relationships(final_df)
+            relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"Writing relationship summary CSV to {relationship_summary_path}")
+            relationship_summary_df.to_csv(relationship_summary_path, index=False)
+
+            print(f"Generating relationship boxplot source at {relationship_boxplot_values_path}")
+            relationship_boxplot_df = _build_relationship_boxplot_dataframe(final_df)
+            relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"Writing relationship boxplot CSV to {relationship_boxplot_values_path}")
+            relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
+
+            if not long_scenarios_path.exists() or not _parquet_file_has_columns(
+                long_scenarios_path,
+                [BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
+            ):
+                print(f"Building long scenarios table at {long_scenarios_path}")
+                long_df = build_long_scenarios(
+                    final_df,
+                    parquet_path=long_scenarios_path,
+                    materialize=False,
+                )
+            else:
+                print(f"Loading cached long scenarios from {long_scenarios_path}")
+                long_df = None
+        else:
+            final_df = None
+            print(f"Generating relationship summary at {relationship_summary_path}")
+            relationship_summary_df = _summarize_relationships_from_parquet(scenarios_costed_path)
+            relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"Writing relationship summary CSV to {relationship_summary_path}")
+            relationship_summary_df.to_csv(relationship_summary_path, index=False)
+
+            print(f"Generating relationship boxplot source at {relationship_boxplot_values_path}")
+            _write_relationship_boxplot_values_from_parquet(
+                scenarios_costed_path,
+                relationship_boxplot_values_path,
+            )
+
+            if not long_scenarios_path.exists() or not _parquet_file_has_columns(
+                long_scenarios_path,
+                [BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
+            ):
+                print(f"Building long scenarios table from cached costed parquet at {long_scenarios_path}")
+                _write_long_scenarios_to_parquet_from_parquet(
+                    scenarios_costed_path,
+                    long_scenarios_path,
+                )
+                long_df = None
+            else:
+                print(f"Loading cached long scenarios from {long_scenarios_path}")
+                long_df = None
     else:
         if not scenarios_combined_path.exists():
             print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
@@ -1352,27 +1560,30 @@ def run_inspection_costs_workflow(
         print(f"Saving final scenarios to {scenarios_costed_path}")
         final_df.to_parquet(scenarios_costed_path, index=False)
 
-    relationship_summary_df = _summarize_relationships(final_df)
-    relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
-    relationship_summary_df.to_csv(relationship_summary_path, index=False)
+        relationship_summary_df = _summarize_relationships(final_df)
+        relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Writing relationship summary CSV to {relationship_summary_path}")
+        relationship_summary_df.to_csv(relationship_summary_path, index=False)
 
-    relationship_boxplot_df = _build_relationship_boxplot_dataframe(final_df)
-    relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
-    relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
+        print(f"Generating relationship boxplot source at {relationship_boxplot_values_path}")
+        relationship_boxplot_df = _build_relationship_boxplot_dataframe(final_df)
+        relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Writing relationship boxplot CSV to {relationship_boxplot_values_path}")
+        relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
 
-    if not long_scenarios_path.exists() or not _parquet_file_has_columns(
-        long_scenarios_path,
-        [BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
-    ):
-        print("Building long scenarios table")
-        long_df = build_long_scenarios(
-            final_df,
-            parquet_path=long_scenarios_path,
-            materialize=False,
-        )
-    else:
-        print(f"Loading cached long scenarios from {long_scenarios_path}")
-        long_df = None
+        if not long_scenarios_path.exists() or not _parquet_file_has_columns(
+            long_scenarios_path,
+            [BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
+        ):
+            print(f"Building long scenarios table at {long_scenarios_path}")
+            long_df = build_long_scenarios(
+                final_df,
+                parquet_path=long_scenarios_path,
+                materialize=False,
+            )
+        else:
+            print(f"Loading cached long scenarios from {long_scenarios_path}")
+            long_df = None
 
     print("Fitting long-scenario model")
     regression_result = fit_long_scenario_model_from_parquet(long_scenarios_path)
