@@ -1,5 +1,3 @@
 __pycache__/
 .DS_Store
-data/scenarios/scenarios_combined.parquet
-data/scenarios/scenarios_costed.parquet
-data/long_scenarios.parquet
+data/saved/
