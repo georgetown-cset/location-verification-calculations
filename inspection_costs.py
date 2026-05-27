@@ -983,7 +983,7 @@ def _summarize_relationships_from_parquet(
 
 
 def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFrame:
-    """Return tidy rows for box plots split by relationship category and metric family."""
+    """Return tidy raw rows for box plots split by relationship category and metric family."""
 
     net_benefit_source_columns = [
         column
@@ -1068,12 +1068,63 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
     return boxplot_df
 
 
+def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.DataFrame:
+    """Return box-plot summary statistics for each metric family and relationship group."""
+
+    group_columns = [
+        "Metric Family",
+        "Relationship Code",
+        "Relationship Description",
+        "Scenario Group",
+        "Scenario Variant",
+        "Scenario Type",
+    ]
+    if boxplot_df.empty:
+        return pd.DataFrame(
+            columns=[
+                *group_columns,
+                "Scenario Count",
+                "Min",
+                "Q1",
+                "Median",
+                "Q3",
+                "Max",
+                "Mean",
+            ]
+        )
+
+    grouped = boxplot_df.groupby(group_columns, dropna=False)["Value"]
+    summary = grouped.agg(
+        Scenario_Count="count",
+        Min="min",
+        Median="median",
+        Max="max",
+        Mean="mean",
+    )
+    summary["Q1"] = grouped.quantile(0.25)
+    summary["Q3"] = grouped.quantile(0.75)
+    summary = summary.reset_index()
+    summary = summary.rename(columns={"Scenario_Count": "Scenario Count"})
+    return summary[
+        [
+            *group_columns,
+            "Scenario Count",
+            "Min",
+            "Q1",
+            "Median",
+            "Q3",
+            "Max",
+            "Mean",
+        ]
+    ].sort_values(group_columns).reset_index(drop=True)
+
+
 def _write_relationship_boxplot_values_from_parquet(
     parquet_path: Path,
     output_csv_path: Path,
     batch_size: int = 65_536,
-) -> None:
-    print(f"Building relationship boxplot source from cached costed parquet: {parquet_path}")
+) -> pd.DataFrame:
+    print(f"Building relationship boxplot summary from cached costed parquet: {parquet_path}")
     file_columns = set(_parquet_file_columns(parquet_path))
     columns = [
         column
@@ -1087,27 +1138,57 @@ def _write_relationship_boxplot_values_from_parquet(
         if column in file_columns
     ]
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
-    first_write = True
+    grouped_values: dict[tuple[object, ...], list[float]] = {}
+    group_columns = [
+        "Metric Family",
+        "Relationship Code",
+        "Relationship Description",
+        "Scenario Group",
+        "Scenario Variant",
+        "Scenario Type",
+    ]
     for batch_df in _iter_parquet_batches(parquet_path, columns=columns, batch_size=batch_size):
         boxplot_df = _build_relationship_boxplot_dataframe(batch_df)
-        boxplot_df.to_csv(output_csv_path, index=False, mode="a", header=first_write)
-        print(f"Appended {len(boxplot_df)} boxplot rows to {output_csv_path}")
-        first_write = False
-    if first_write:
-        empty_columns = [
-            "Metric Family",
-            "Relationship Code",
-            "Relationship Description",
-            "Scenario Group",
-            "Scenario Variant",
-            "Scenario ID",
-            "Scenario Type",
-            "Value",
-        ]
-        if "Mix ID" in file_columns:
-            empty_columns.insert(5, "Mix ID")
-        pd.DataFrame(columns=empty_columns).to_csv(output_csv_path, index=False)
-        print(f"Wrote empty relationship boxplot source to {output_csv_path}")
+        if boxplot_df.empty:
+            print("Processed boxplot batch with 0 rows")
+            continue
+        grouped = boxplot_df.groupby(group_columns, dropna=False)["Value"]
+        for group_key, values in grouped:
+            grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
+        print(f"Accumulated {len(boxplot_df)} boxplot rows from current batch")
+
+    if not grouped_values:
+        empty_summary = _summarize_relationship_boxplot_dataframe(
+            pd.DataFrame(columns=[*group_columns, "Value"])
+        )
+        empty_summary.to_csv(output_csv_path, index=False)
+        print(f"Wrote empty relationship boxplot summary to {output_csv_path}")
+        return empty_summary
+
+    summary_rows = []
+    for group_key, values in grouped_values.items():
+        value_series = pd.Series(values, dtype="float64")
+        summary_rows.append(
+            {
+                "Metric Family": group_key[0],
+                "Relationship Code": group_key[1],
+                "Relationship Description": group_key[2],
+                "Scenario Group": group_key[3],
+                "Scenario Variant": group_key[4],
+                "Scenario Type": group_key[5],
+                "Scenario Count": int(value_series.count()),
+                "Min": float(value_series.min()),
+                "Q1": float(value_series.quantile(0.25)),
+                "Median": float(value_series.median()),
+                "Q3": float(value_series.quantile(0.75)),
+                "Max": float(value_series.max()),
+                "Mean": float(value_series.mean()),
+            }
+        )
+    summary_df = pd.DataFrame(summary_rows).sort_values(group_columns).reset_index(drop=True)
+    print(f"Writing relationship boxplot summary CSV to {output_csv_path}")
+    summary_df.to_csv(output_csv_path, index=False)
+    return summary_df
 
 
 def _parquet_file_columns(parquet_path: Path) -> list[str]:
@@ -1469,8 +1550,9 @@ def run_inspection_costs_workflow(
             print(f"Writing relationship summary CSV to {relationship_summary_path}")
             relationship_summary_df.to_csv(relationship_summary_path, index=False)
 
-            print(f"Generating relationship boxplot source at {relationship_boxplot_values_path}")
-            relationship_boxplot_df = _build_relationship_boxplot_dataframe(final_df)
+            print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
+            relationship_boxplot_rows_df = _build_relationship_boxplot_dataframe(final_df)
+            relationship_boxplot_df = _summarize_relationship_boxplot_dataframe(relationship_boxplot_rows_df)
             relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
             print(f"Writing relationship boxplot CSV to {relationship_boxplot_values_path}")
             relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
@@ -1496,8 +1578,8 @@ def run_inspection_costs_workflow(
             print(f"Writing relationship summary CSV to {relationship_summary_path}")
             relationship_summary_df.to_csv(relationship_summary_path, index=False)
 
-            print(f"Generating relationship boxplot source at {relationship_boxplot_values_path}")
-            _write_relationship_boxplot_values_from_parquet(
+            print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
+            relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
                 scenarios_costed_path,
                 relationship_boxplot_values_path,
             )
@@ -1565,8 +1647,9 @@ def run_inspection_costs_workflow(
         print(f"Writing relationship summary CSV to {relationship_summary_path}")
         relationship_summary_df.to_csv(relationship_summary_path, index=False)
 
-        print(f"Generating relationship boxplot source at {relationship_boxplot_values_path}")
-        relationship_boxplot_df = _build_relationship_boxplot_dataframe(final_df)
+        print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
+        relationship_boxplot_rows_df = _build_relationship_boxplot_dataframe(final_df)
+        relationship_boxplot_df = _summarize_relationship_boxplot_dataframe(relationship_boxplot_rows_df)
         relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"Writing relationship boxplot CSV to {relationship_boxplot_values_path}")
         relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
