@@ -295,6 +295,12 @@ def build_final_scenario_tables(
         "Bad Records (K)",
         "Number of Clusters",
         "Tests (n)",
+        "Physical Inspection - P(Detect)",
+        "Physical Inspection - Diverted Chips Identified",
+        "PLV - P(Detect)",
+        "PLV - Diverted Chips Identified",
+        "Physical Inspection - Total Diverted Chips Identified",
+        "PLV - Total Diverted Chips Identified",
     ]
 
     if return_dataframe is None:
@@ -465,42 +471,47 @@ def enrich_final_scenarios_with_detection(
     final_scenarios_df: pd.DataFrame,
     detection_lookup_table: pd.DataFrame,
 ) -> pd.DataFrame:
-    lookup_columns = [
-        "Cluster Size (N)",
-        "Bad Records (K)",
-        "Tests (n)",
-        "Chip-level Miss Prob (m)",
-        "Physical Inspection - P(Detect)",
-        "PLV - P(Detect)",
-    ]
-    lookup_key_columns = ["Cluster Size (N)", "Bad Records (K)", "Tests (n)"]
-    m_counts = detection_lookup_table.groupby(lookup_key_columns)["Chip-level Miss Prob (m)"].nunique()
-    if (m_counts > 1).any():
-        raise ValueError(
-            "Cannot drop 'Chip-level Miss Prob (m)' from stored component data when the detection lookup table "
-            "contains multiple m values for the same (N, K, n) key."
+    result = final_scenarios_df.copy()
+    if "Physical Inspection - P(Detect)" not in result.columns or "PLV - P(Detect)" not in result.columns:
+        lookup_columns = [
+            "Cluster Size (N)",
+            "Bad Records (K)",
+            "Tests (n)",
+            "Chip-level Miss Prob (m)",
+            "Physical Inspection - P(Detect)",
+            "PLV - P(Detect)",
+        ]
+        lookup_key_columns = ["Cluster Size (N)", "Bad Records (K)", "Tests (n)"]
+        m_counts = detection_lookup_table.groupby(lookup_key_columns)["Chip-level Miss Prob (m)"].nunique()
+        if (m_counts > 1).any():
+            raise ValueError(
+                "Cannot drop 'Chip-level Miss Prob (m)' from stored component data when the detection lookup table "
+                "contains multiple m values for the same (N, K, n) key."
+            )
+
+        lookup_df = detection_lookup_table.loc[:, lookup_columns].drop_duplicates(subset=lookup_key_columns)
+        result = result.merge(
+            lookup_df,
+            on=lookup_key_columns,
+            how="left",
+            validate="many_to_one",
         )
 
-    lookup_df = detection_lookup_table.loc[:, lookup_columns].drop_duplicates(subset=lookup_key_columns)
-    result = final_scenarios_df.copy()
     result["Share Diverted"] = result["Bad Records (K)"] / result["Cluster Size (N)"]
-    result = result.merge(
-        lookup_df,
-        on=lookup_key_columns,
-        how="left",
-        validate="many_to_one",
-    )
-
-    result["Physical Inspection - Diverted Chips Identified"] = (
-        result["Physical Inspection - P(Detect)"] * result["Bad Records (K)"]
-    )
-    result["PLV - Diverted Chips Identified"] = result["PLV - P(Detect)"] * result["Bad Records (K)"]
-    result["Physical Inspection - Total Diverted Chips Identified"] = (
-        result["Physical Inspection - Diverted Chips Identified"] * result["Number of Clusters"]
-    )
-    result["PLV - Total Diverted Chips Identified"] = (
-        result["PLV - Diverted Chips Identified"] * result["Number of Clusters"]
-    )
+    if "Physical Inspection - Diverted Chips Identified" not in result.columns:
+        result["Physical Inspection - Diverted Chips Identified"] = (
+            result["Physical Inspection - P(Detect)"] * result["Bad Records (K)"]
+        )
+    if "PLV - Diverted Chips Identified" not in result.columns:
+        result["PLV - Diverted Chips Identified"] = result["PLV - P(Detect)"] * result["Bad Records (K)"]
+    if "Physical Inspection - Total Diverted Chips Identified" not in result.columns:
+        result["Physical Inspection - Total Diverted Chips Identified"] = (
+            result["Physical Inspection - Diverted Chips Identified"] * result["Number of Clusters"]
+        )
+    if "PLV - Total Diverted Chips Identified" not in result.columns:
+        result["PLV - Total Diverted Chips Identified"] = (
+            result["PLV - Diverted Chips Identified"] * result["Number of Clusters"]
+        )
     return result
 
 
@@ -603,7 +614,13 @@ def _build_final_scenario_records_for_mix(
                 for (N_comp, num_clusters_comp, _weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
                     detection_info_list = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), [])
 
-                    for (_m_val, *_unused_detection_metrics) in detection_info_list:
+                    for (
+                        _m_val,
+                        physical_p_detect,
+                        physical_identified_per_cluster,
+                        plv_p_detect,
+                        plv_identified_per_cluster,
+                    ) in detection_info_list:
                         component_rows.append(
                             (
                                 scenario_id,
@@ -611,6 +628,12 @@ def _build_final_scenario_records_for_mix(
                                 k_val,
                                 num_clusters_comp,
                                 n_val,
+                                physical_p_detect,
+                                physical_identified_per_cluster,
+                                plv_p_detect,
+                                plv_identified_per_cluster,
+                                physical_identified_per_cluster * num_clusters_comp,
+                                plv_identified_per_cluster * num_clusters_comp,
                             )
                         )
 
@@ -627,11 +650,11 @@ def _build_final_scenario_records_for_mix(
                         f"component rows so far for mix={len(component_records)}"
                     )
 
-        if combo_count % 1000 == 0:
-            print(
-                f"build_final_scenario_tables: {mix_id} processed {combo_count} K combinations; "
-                f"scenario rows so far for mix={len(scenario_records)}, component rows so far for mix={len(component_records)}"
-            )
+            if combo_count % 1000 == 0:
+                print(
+                    f"build_final_scenario_tables: {mix_id} processed {combo_count} K combinations; "
+                    f"scenario rows so far for mix={len(scenario_records)}, component rows so far for mix={len(component_records)}"
+                )
 
     return scenario_records, component_records
 
@@ -869,6 +892,12 @@ def _final_scenario_component_arrow_schema(pa):
             ("Bad Records (K)", pa.int64()),
             ("Number of Clusters", pa.int64()),
             ("Tests (n)", pa.int64()),
+            ("Physical Inspection - P(Detect)", pa.float64()),
+            ("Physical Inspection - Diverted Chips Identified", pa.float64()),
+            ("PLV - P(Detect)", pa.float64()),
+            ("PLV - Diverted Chips Identified", pa.float64()),
+            ("Physical Inspection - Total Diverted Chips Identified", pa.float64()),
+            ("PLV - Total Diverted Chips Identified", pa.float64()),
         ]
     )
 
