@@ -45,6 +45,15 @@ LONG_SCENARIO_BENEFIT_SCENARIOS = {
     "PLV - Min Net Benefit": "PLV (Conservative)",
     "PLV - Max Net Benefit": "PLV (Optimistic)",
 }
+NET_BENEFIT_RELATIONSHIP_COLUMN = "Physical vs PLV Net Benefit Relationship"
+NET_BENEFIT_RELATIONSHIP_LABELS = {
+    "a": "Physical max net benefit is less than PLV min net benefit",
+    "b": "Physical max net benefit is within PLV net benefit range and Physical min net benefit is below PLV min net benefit",
+    "c": "Physical min and max net benefits are both within PLV net benefit range",
+    "d": "Physical min net benefit is within PLV net benefit range and Physical max net benefit is above PLV max net benefit",
+    "e": "Physical min net benefit is greater than PLV max net benefit",
+    "f": "Physical net benefit range spans both sides of PLV net benefit range",
+}
 
 
 def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
@@ -712,6 +721,62 @@ def _import_pyarrow_parquet():
     return pq, pa
 
 
+def _parquet_file_has_columns(parquet_path: Path, expected_columns: Iterable[str]) -> bool:
+    pq, _pa = _import_pyarrow_parquet()
+    try:
+        parquet_file = pq.ParquetFile(parquet_path)
+    except Exception:
+        return False
+    schema_names = set(parquet_file.schema.names)
+    return all(column in schema_names for column in expected_columns)
+
+
+def _classify_net_benefit_relationship(summary_df: pd.DataFrame) -> pd.Series:
+    """Classify the physical-inspection and PLV net benefit intervals.
+
+    The returned value records how the Physical Inspection interval compares to the
+    PLV interval for each scenario:
+    a. Physical max < PLV min
+    b. Physical max is within PLV range and Physical min < PLV min
+    c. Physical min and max are both within PLV range
+    d. Physical min is within PLV range and Physical max > PLV max
+    e. Physical min > PLV max
+    f. Physical min < PLV min and Physical max > PLV max
+    """
+
+    physical_min = summary_df["Physical - Min Net Benefit"]
+    physical_max = summary_df["Physical - Max Net Benefit"]
+    plv_min = summary_df["PLV - Min Net Benefit"]
+    plv_max = summary_df["PLV - Max Net Benefit"]
+
+    relationship = np.select(
+        [
+            physical_max < plv_min,
+            physical_min > plv_max,
+            (physical_min < plv_min) & (physical_max > plv_max),
+            (plv_min <= physical_min) & (physical_max <= plv_max),
+            (physical_min < plv_min) & (plv_min <= physical_max) & (physical_max <= plv_max),
+            (plv_min <= physical_min) & (physical_min <= plv_max) & (plv_max < physical_max),
+        ],
+        [
+            "a",
+            "e",
+            "f",
+            "c",
+            "b",
+            "d",
+        ],
+        default="unknown",
+    )
+    result = pd.Series(relationship, index=summary_df.index, name=NET_BENEFIT_RELATIONSHIP_COLUMN)
+    if (result == "unknown").any():
+        raise ValueError(
+            "Encountered an unexpected physical-vs-PLV net benefit relationship; "
+            "check the interval classification logic."
+        )
+    return result
+
+
 
 def _final_scenario_component_arrow_schema(pa):
     return pa.schema(
@@ -796,6 +861,7 @@ def add_cost_benefit_columns(
         result["PLV - Total Diverted Chips Identified"] * dollars_per_chip_detected[1]
         - result["PLV - Min Total Cost"]
     )
+    result[NET_BENEFIT_RELATIONSHIP_COLUMN] = _classify_net_benefit_relationship(result)
 
     return result
 
@@ -872,11 +938,16 @@ def build_long_scenarios(
 ) -> pd.DataFrame | None:
     if parquet_path is not None:
         parquet_path = Path(parquet_path)
-        if parquet_path.exists():
+        if parquet_path.exists() and _parquet_file_has_columns(parquet_path, [NET_BENEFIT_RELATIONSHIP_COLUMN]):
             print(f"build_long_scenarios: reading cached table from {parquet_path}")
             if not materialize:
                 return None
             return pd.read_parquet(parquet_path)
+        if parquet_path.exists():
+            print(
+                f"build_long_scenarios: cached table at {parquet_path} is missing "
+                f"{NET_BENEFIT_RELATIONSHIP_COLUMN!r}; rebuilding"
+            )
 
     if final_df is None:
         raise ValueError("final_df is required when no cached long scenarios table is available")
@@ -998,54 +1069,73 @@ def run_inspection_costs_workflow(
     final_df = None
 
     print("Starting inspection costs workflow")
-    if not long_scenarios_path.exists():
-        if not scenarios_costed_path.exists():
-            if not scenarios_combined_path.exists():
-                print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
-                detection_lookup_table = build_detection_lookup_table(
-                    cluster_sizes=cluster_sizes,
-                    K_vals=k_vals,
-                    n_vals=n_vals,
-                    m_vals=m_vals,
-                )
-                print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+    if not scenarios_combined_path.exists():
+        print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
+        detection_lookup_table = build_detection_lookup_table(
+            cluster_sizes=cluster_sizes,
+            K_vals=k_vals,
+            n_vals=n_vals,
+            m_vals=m_vals,
+        )
+        print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
-                print("Building normalized final scenarios")
-                scenario_df, component_df = build_scenarios(
-                    cluster_sizes=cluster_sizes,
-                    detection_lookup_table=detection_lookup_table,
-                    k_vals=k_vals,
-                    target_chips=target_chips,
-                    steps=steps,
-                    return_dataframe=True,
-                )
-                combined_df = merge_scenarios(scenario_df, component_df)
-                print(f"Scenario rows: {len(scenario_df)}")
-                print(f"Component rows: {len(component_df)}")
-                print(combined_df.head())
+        print("Building normalized final scenarios")
+        scenario_df, component_df = build_scenarios(
+            cluster_sizes=cluster_sizes,
+            detection_lookup_table=detection_lookup_table,
+            k_vals=k_vals,
+            target_chips=target_chips,
+            steps=steps,
+            return_dataframe=True,
+        )
+        combined_df = merge_scenarios(scenario_df, component_df)
+        print(f"Scenario rows: {len(scenario_df)}")
+        print(f"Component rows: {len(component_df)}")
+        print(combined_df.head())
 
-                scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-                print(f"Saving combined scenarios to {scenarios_combined_path}")
-                combined_df.to_parquet(scenarios_combined_path, index=False)
-            else:
-                print(f"Loading cached combined scenarios from {scenarios_combined_path}")
-                combined_df = pd.read_parquet(scenarios_combined_path)
+        scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving combined scenarios to {scenarios_combined_path}")
+        combined_df.to_parquet(scenarios_combined_path, index=False)
+    else:
+        print(f"Loading cached combined scenarios from {scenarios_combined_path}")
+        combined_df = pd.read_parquet(scenarios_combined_path)
 
-            print("Adding cost and benefit columns")
+    if not scenarios_costed_path.exists():
+        if combined_df is None:
+            raise ValueError("combined_df is required when costed scenarios are not cached")
+        print("Adding cost and benefit columns")
+        final_df = add_cost_benefit_columns(
+            combined_df,
+            phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
+            phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
+            plv_cost_per_total_chip=plv_cost_per_total_chip,
+            dollars_per_chip_detected=dollars_per_chip_detected,
+        )
+        scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving final scenarios to {scenarios_costed_path}")
+        final_df.to_parquet(scenarios_costed_path, index=False)
+    else:
+        print(f"Loading cached costed scenarios from {scenarios_costed_path}")
+        final_df = pd.read_parquet(scenarios_costed_path)
+        if NET_BENEFIT_RELATIONSHIP_COLUMN not in final_df.columns:
+            print(
+                f"Cached costed scenarios are missing {NET_BENEFIT_RELATIONSHIP_COLUMN!r}; "
+                "recomputing and saving refreshed output"
+            )
             final_df = add_cost_benefit_columns(
-                combined_df,
+                final_df,
                 phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
                 phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
                 plv_cost_per_total_chip=plv_cost_per_total_chip,
                 dollars_per_chip_detected=dollars_per_chip_detected,
             )
             scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"Saving final scenarios to {scenarios_costed_path}")
             final_df.to_parquet(scenarios_costed_path, index=False)
-        else:
-            print(f"Loading cached costed scenarios from {scenarios_costed_path}")
-            final_df = pd.read_parquet(scenarios_costed_path)
 
+    if not long_scenarios_path.exists() or not _parquet_file_has_columns(
+        long_scenarios_path,
+        [NET_BENEFIT_RELATIONSHIP_COLUMN],
+    ):
         print("Building long scenarios table")
         long_df = build_long_scenarios(
             final_df,
