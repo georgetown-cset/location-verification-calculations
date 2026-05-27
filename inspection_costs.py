@@ -14,7 +14,7 @@ import pandas as pd
 
 TARGET_CHIPS = 2_000_000
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
-FINAL_SCENARIOS_PARQUET_PATH = "data/final_scenarios"
+SCENARIOS_PARQUET_PATH = "data/scenarios"
 FINAL_SCENARIO_COMPONENT_DATASET_NAME = "scenario_components"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
@@ -259,20 +259,20 @@ def _group_detection_lookup_table(detection_lookup_table: pd.DataFrame) -> dict[
     return grouped
 
 
-def build_final_scenario_tables(
+def build_scenario_tables(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
-    output_parquet_path: Optional[str | Path] = FINAL_SCENARIOS_PARQUET_PATH,
+    output_parquet_path: Optional[str | Path] = SCENARIOS_PARQUET_PATH,
     return_dataframe: Optional[bool] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
-    print(f"build_final_scenario_tables: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
+    print(f"build_scenario_tables: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
     mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
-    print(f"build_final_scenario_tables: received {len(mix_data)} mixes from build_mix_data")
+    print(f"build_scenario_tables: received {len(mix_data)} mixes from build_mix_data")
     detection_grouped = _group_detection_lookup_table(detection_lookup_table)
     k_options_by_cluster_size = {
         int(cluster_size): [int(k) for k in k_vals if k <= cluster_size]
@@ -315,7 +315,7 @@ def build_final_scenario_tables(
 
     if parquet_path is not None:
         component_dataset_path = _scenario_component_dataset_path(parquet_path)
-        _ensure_final_scenarios_dataset_path(component_dataset_path)
+        _ensure_scenarios_dataset_path(component_dataset_path)
         pq, _pa = _import_pyarrow_parquet()
         for mix_components in mix_data:
             mix_id = mix_components[0]["Mix ID"]
@@ -325,7 +325,7 @@ def build_final_scenario_tables(
                 mix_summary_count = _count_scenarios_in_component_file(mix_parquet_path, pq)
                 mix_fragment_count = 0
                 print(
-                    f"build_final_scenario_tables: reusing existing {mix_id}; "
+                    f"build_scenario_tables: skipping {mix_id} (already written); "
                     f"scenario rows={mix_summary_count}, component rows={mix_component_count}"
                 )
             else:
@@ -335,7 +335,7 @@ def build_final_scenario_tables(
                     k_options_by_cluster_size=k_options_by_cluster_size,
                     target_chips=target_chips,
                 )
-                mix_component_fragments = _write_final_scenario_dataset_to_parquet(
+                mix_component_fragments = _write_scenario_dataset_to_parquet(
                     dataset_path=component_dataset_path,
                     mix_id=mix_id,
                     records=mix_component_records,
@@ -344,19 +344,19 @@ def build_final_scenario_tables(
                 mix_component_count = len(mix_component_records)
                 mix_fragment_count = len(mix_component_fragments)
                 print(
-                    f"build_final_scenario_tables: wrote {mix_id}; "
+                    f"build_scenario_tables: wrote {mix_id}; "
                     f"scenario rows added={mix_summary_count}, component rows added={mix_component_count}, "
                     f"fragment files written={mix_fragment_count}"
                 )
             total_scenarios += mix_summary_count
             total_components += mix_component_count
             print(
-                f"build_final_scenario_tables: finished {mix_id}; total scenario rows={total_scenarios}, "
+                f"build_scenario_tables: finished {mix_id}; total scenario rows={total_scenarios}, "
                 f"total component rows={total_components}"
             )
 
         print(
-            f"build_final_scenario_tables: completed with {total_scenarios} new scenario rows "
+            f"build_scenario_tables: completed with {total_scenarios} new scenario rows "
             f"and {total_components} new component rows"
         )
 
@@ -381,13 +381,13 @@ def build_final_scenario_tables(
             scenario_records.extend(mix_scenario_records)
             component_records.extend(mix_component_records)
         print(
-            f"build_final_scenario_tables: finished {mix_components[0]['Mix ID']}; "
+            f"build_scenario_tables: finished {mix_components[0]['Mix ID']}; "
             f"scenario rows added={len(mix_scenario_records)}, component rows added={len(mix_component_records)}, "
             f"total new scenario rows={total_scenarios}, total new component rows={total_components}"
         )
 
     print(
-        f"build_final_scenario_tables: completed with {total_scenarios} new scenario rows "
+        f"build_scenario_tables: completed with {total_scenarios} new scenario rows "
         f"and {total_components} new component rows"
     )
 
@@ -400,16 +400,16 @@ def build_final_scenario_tables(
     return scenario_df, component_df
 
 
-def build_final_scenarios(
+def build_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
-    output_parquet_path: Optional[str | Path] = FINAL_SCENARIOS_PARQUET_PATH,
+    output_parquet_path: Optional[str | Path] = SCENARIOS_PARQUET_PATH,
     return_dataframe: Optional[bool] = None,
 ) -> pd.DataFrame:
-    scenario_df, component_df = build_final_scenario_tables(
+    scenario_df, component_df = build_scenario_tables(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
@@ -418,11 +418,11 @@ def build_final_scenarios(
         output_parquet_path=output_parquet_path,
         return_dataframe=True if return_dataframe is None else return_dataframe,
     )
-    combined_scenarios = build_final_scenario_view(scenario_df, component_df)
-    return enrich_final_scenarios_with_detection(combined_scenarios, detection_lookup_table)
+    combined_scenarios = build_scenario_view(scenario_df, component_df)
+    return enrich_scenarios_with_detection(combined_scenarios, detection_lookup_table)
 
 
-def build_final_scenario_view(
+def build_scenario_view(
     scenario_df: Optional[pd.DataFrame] = None,
     component_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
@@ -513,11 +513,11 @@ def _parse_scenario_id(scenario_id: str) -> tuple[str, str, str]:
     return match.group("mix_id"), match.group("k_combo"), match.group("n_combo")
 
 
-def enrich_final_scenarios_with_detection(
-    final_scenarios_df: pd.DataFrame,
+def enrich_scenarios_with_detection(
+    scenarios_df: pd.DataFrame,
     detection_lookup_table: pd.DataFrame,
 ) -> pd.DataFrame:
-    result = final_scenarios_df.copy()
+    result = scenarios_df.copy()
     if "Physical Inspection - P(Detect)" not in result.columns or "PLV - P(Detect)" not in result.columns:
         lookup_columns = [
             "Cluster Size (N)",
@@ -605,14 +605,14 @@ def _mix_dataset_dir(dataset_path: Path, mix_id: str) -> Path:
     return mix_dir
 
 
-def _write_final_scenario_dataset_to_parquet(
+def _write_scenario_dataset_to_parquet(
     *,
     dataset_path: Path,
     mix_id: str,
     records: list[tuple[object, ...]],
 ) -> list[Path]:
     pq, pa = _import_pyarrow_parquet()
-    _ensure_final_scenarios_dataset_path(dataset_path)
+    _ensure_scenarios_dataset_path(dataset_path)
     mix_parquet_path = _mix_parquet_path(dataset_path, mix_id)
     _clear_existing_mix_files(mix_parquet_path)
     if not records:
@@ -641,7 +641,7 @@ def _build_final_scenario_records_for_mix(
     mix_description = build_mix_description(mix_components)
     total_clusters_in_mix = sum(component["Number of Clusters"] for component in mix_components)
     print(
-        f"build_final_scenario_tables: processing {mix_id} ({mix_description}) "
+        f"build_scenario_tables: processing {mix_id} ({mix_description}) "
         f"with {len(mix_components)} components and {total_clusters_in_mix} total clusters"
     )
 
@@ -718,32 +718,32 @@ def _build_final_scenario_records_for_mix(
 
                 if n_combo_count % 1000 == 0:
                     print(
-                        f"build_final_scenario_tables: {mix_id} processed {combo_count} K combinations and "
+                        f"build_scenario_tables: {mix_id} processed {combo_count} K combinations and "
                         f"{n_combo_count} n combinations; scenario rows so far for mix={len(scenario_records)}, "
                         f"component rows so far for mix={len(component_records)}"
                     )
 
             if combo_count % 1000 == 0:
                 print(
-                    f"build_final_scenario_tables: {mix_id} processed {combo_count} K combinations; "
+                    f"build_scenario_tables: {mix_id} processed {combo_count} K combinations; "
                     f"scenario rows so far for mix={len(scenario_records)}, component rows so far for mix={len(component_records)}"
                 )
 
     return scenario_records, component_records
 
 
-def _write_final_scenarios_mix_to_parquet(
+def _write_scenarios_mix_to_parquet(
     parquet_path: Path,
     mix_id: str,
     records: list[tuple[object, ...]],
     columns: list[str],
 ) -> list[Path]:
     pq, pa = _import_pyarrow_parquet()
-    _ensure_final_scenarios_dataset_path(parquet_path)
+    _ensure_scenarios_dataset_path(parquet_path)
     mix_parquet_path = _mix_parquet_path(parquet_path, mix_id)
     _clear_existing_mix_fragments(mix_parquet_path)
     if not records:
-        table = _empty_final_scenarios_table(pa)
+        table = _empty_scenarios_table(pa)
         pq.write_table(table, mix_parquet_path)
         return [mix_parquet_path]
 
@@ -752,7 +752,7 @@ def _write_final_scenarios_mix_to_parquet(
         fragment_path=mix_parquet_path,
         pq=pq,
         pa=pa,
-        schema=_final_scenarios_arrow_schema(pa),
+    schema=_scenarios_arrow_schema(pa),
     )
 
 
@@ -773,7 +773,7 @@ def _read_processed_mix_ids_from_parquet(parquet_path: Path) -> set[str]:
             if len(mix_ids_in_file) != 1:
                 if mix_ids_in_file:
                     print(
-                        f"build_final_scenarios: ignoring {mix_parquet_path}; "
+                        f"build_scenarios: ignoring {mix_parquet_path}; "
                         f"expected one Mix ID but found {len(mix_ids_in_file)}"
                     )
                 continue
@@ -782,7 +782,7 @@ def _read_processed_mix_ids_from_parquet(parquet_path: Path) -> set[str]:
             if mix_parquet_path.stat().st_size > FINAL_SCENARIOS_MAX_FRAGMENT_BYTES:
                 invalid_mix_ids.add(mix_id)
                 print(
-                    f"build_final_scenarios: ignoring {mix_parquet_path}; "
+                    f"build_scenarios: ignoring {mix_parquet_path}; "
                     f"fragment exceeds {FINAL_SCENARIOS_MAX_FRAGMENT_BYTES:,} byte limit"
                 )
                 continue
@@ -790,14 +790,14 @@ def _read_processed_mix_ids_from_parquet(parquet_path: Path) -> set[str]:
             if not _final_scenario_fragment_is_current_version(mix_parquet_path, pq):
                 invalid_mix_ids.add(mix_id)
                 print(
-                    f"build_final_scenarios: ignoring {mix_parquet_path}; "
+                    f"build_scenarios: ignoring {mix_parquet_path}; "
                     "fragment does not match the current mix/k/n scenario format"
                 )
                 continue
 
             processed_mix_ids.add(mix_id)
         except Exception as exc:
-            print(f"build_final_scenarios: ignoring unreadable parquet fragment {mix_parquet_path}: {exc}")
+            print(f"build_scenarios: ignoring unreadable parquet fragment {mix_parquet_path}: {exc}")
     return processed_mix_ids - invalid_mix_ids
 
 
@@ -824,7 +824,7 @@ def _write_final_scenario_fragments_with_size_cap(
     pa,
     schema,
 ) -> list[Path]:
-    _ensure_final_scenarios_dataset_path(fragment_path.parent)
+    _ensure_scenarios_dataset_path(fragment_path.parent)
     table = _records_to_arrow_table(records, pa, schema)
     pq.write_table(table, fragment_path)
 
@@ -865,8 +865,8 @@ def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
             existing_path.unlink()
 
 
-def _empty_final_scenarios_table(pa):
-    schema = _final_scenarios_arrow_schema(pa)
+def _empty_scenarios_table(pa):
+    schema = _scenarios_arrow_schema(pa)
     return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
 
 
@@ -874,11 +874,11 @@ def _empty_arrow_table(pa, schema):
     return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
 
 
-def _write_complete_final_scenarios_parquet(component_parquet_path: Path, complete_parquet_path: Path) -> None:
+def _write_complete_scenarios_parquet(component_parquet_path: Path, complete_parquet_path: Path) -> None:
     pq, pa = _import_pyarrow_parquet()
-    _ensure_final_scenarios_dataset_path(component_parquet_path)
+    _ensure_scenarios_dataset_path(component_parquet_path)
     complete_parquet_path.parent.mkdir(parents=True, exist_ok=True)
-    schema = _final_scenarios_arrow_schema(pa)
+    schema = _scenarios_arrow_schema(pa)
     fragment_paths = sorted(component_parquet_path.rglob("*.parquet"))
 
     writer = pq.ParquetWriter(complete_parquet_path, schema)
@@ -895,15 +895,13 @@ def _write_complete_final_scenarios_parquet(component_parquet_path: Path, comple
         writer.close()
 
 
-def _combined_final_scenarios_parquet_path(base_path: Path) -> Path:
-    return base_path / "combined_final_scenarios.parquet"
+def _scenarios_combined_parquet_path(base_path: Path) -> Path:
+    return base_path / "scenarios_combined.parquet"
 
+def _scenarios_enriched_parquet_path(base_path: Path) -> Path:
+    return base_path / "scenarios_enriched.parquet"
 
-def _final_final_scenarios_parquet_path(base_path: Path) -> Path:
-    return base_path / "final_scenarios.parquet"
-
-
-def _ensure_final_scenarios_dataset_path(parquet_path: Path) -> None:
+def _ensure_scenarios_dataset_path(parquet_path: Path) -> None:
     if parquet_path.exists() and not parquet_path.is_dir():
         raise ValueError(
             f"{parquet_path} is a file, but chunked final scenario output now uses a parquet dataset directory. "
@@ -933,10 +931,10 @@ def _mix_id_shard(safe_mix_id: str) -> str:
     return first_component or "unknown"
 
 
-def _final_scenarios_records_to_arrow_table(records: list[tuple[object, ...]], columns: list[str], pa):
+def _scenarios_records_to_arrow_table(records: list[tuple[object, ...]], columns: list[str], pa):
     return pa.Table.from_arrays(
         [pa.array(values) for values in zip(*records)],
-        schema=_final_scenarios_arrow_schema(pa),
+        schema=_scenarios_arrow_schema(pa),
     )
 
 
@@ -951,10 +949,17 @@ def _import_pyarrow_parquet():
     except ImportError as exc:
         raise ImportError(
             "Writing final scenarios to parquet requires pyarrow. "
-            "Install pyarrow or call build_final_scenarios(..., output_parquet_path=None) "
+            "Install pyarrow or call build_scenarios(..., output_parquet_path=None) "
             "to use the in-memory DataFrame path."
         ) from exc
     return pq, pa
+
+
+# Backward-compatible aliases for older callers.
+build_final_scenario_tables = build_scenario_tables
+build_final_scenarios = build_scenarios
+build_final_scenario_view = build_scenario_view
+enrich_final_scenarios_with_detection = enrich_scenarios_with_detection
 
 
 def _final_scenario_component_arrow_schema(pa):
@@ -978,7 +983,7 @@ def _final_scenario_component_arrow_schema(pa):
     )
 
 
-def _final_scenarios_arrow_schema(pa):
+def _scenarios_arrow_schema(pa):
     return pa.schema(
         [
             ("Mix ID", pa.string()),
@@ -1137,7 +1142,7 @@ def run_inspection_costs_workflow(
     print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
     print("Building normalized final scenarios")
-    scenario_df, component_df = build_final_scenario_tables(
+    scenario_df, component_df = build_scenario_tables(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
@@ -1145,13 +1150,13 @@ def run_inspection_costs_workflow(
         steps=steps,
         return_dataframe=True,
     )
-    combined_scenarios = build_final_scenario_view(scenario_df, component_df)
+    combined_scenarios = build_scenario_view(scenario_df, component_df)
     print(f"Scenario rows: {len(scenario_df)}")
     print(f"Component rows: {len(component_df)}")
     print(combined_scenarios.head())
 
-    combined_output_path = _combined_final_scenarios_parquet_path(Path(FINAL_SCENARIOS_PARQUET_PATH))
-    final_output_path = _final_final_scenarios_parquet_path(Path(FINAL_SCENARIOS_PARQUET_PATH))
+    combined_output_path = _scenarios_combined_parquet_path(Path(SCENARIOS_PARQUET_PATH))
+    final_output_path = _scenarios_enriched_parquet_path(Path(SCENARIOS_PARQUET_PATH))
     combined_output_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Saving combined scenarios to {combined_output_path}")
     combined_scenarios.to_parquet(combined_output_path, index=False)
@@ -1160,13 +1165,13 @@ def run_inspection_costs_workflow(
     combined_scenarios = pd.read_parquet(combined_output_path)
 
     print("Adding detection metrics after reimport")
-    final_scenarios = enrich_final_scenarios_with_detection(combined_scenarios, detection_lookup_table)
+    scenarios = enrich_scenarios_with_detection(combined_scenarios, detection_lookup_table)
     print(f"Saving final enriched scenarios to {final_output_path}")
-    final_scenarios.to_parquet(final_output_path, index=False)
+    scenarios.to_parquet(final_output_path, index=False)
 
     print("Adding cost and benefit columns")
     costed_summary_df = add_cost_benefit_columns(
-        final_scenarios,
+        scenarios,
         phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
         phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
         plv_cost_per_total_chip=plv_cost_per_total_chip,
@@ -1185,8 +1190,8 @@ def run_inspection_costs_workflow(
         "scenario_df": scenario_df,
         "component_df": component_df,
         "combined_scenarios": combined_scenarios,
-        "final_scenarios": final_scenarios,
-        "summary_df": final_scenarios,
+        "scenarios": scenarios,
+        "summary_df": scenarios,
         "costed_summary_df": costed_summary_df,
         "efficiency_long_df": efficiency_long_df,
         "regression_result": regression_result,
