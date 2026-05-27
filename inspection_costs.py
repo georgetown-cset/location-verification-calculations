@@ -401,28 +401,6 @@ def build_scenario_tables(
     return scenario_df, component_df
 
 
-def build_scenarios(
-    cluster_sizes: Iterable[int],
-    detection_lookup_table: pd.DataFrame,
-    k_vals: Iterable[int],
-    target_chips: int = TARGET_CHIPS,
-    steps: Optional[Iterable[float]] = None,
-    output_parquet_path: Optional[str | Path] = SCENARIOS_PARQUET_PATH,
-    return_dataframe: Optional[bool] = None,
-) -> pd.DataFrame:
-    scenario_df, component_df = build_scenario_tables(
-        cluster_sizes=cluster_sizes,
-        detection_lookup_table=detection_lookup_table,
-        k_vals=k_vals,
-        target_chips=target_chips,
-        steps=steps,
-        output_parquet_path=output_parquet_path,
-        return_dataframe=True if return_dataframe is None else return_dataframe,
-    )
-    combined_scenarios = build_scenario_view(scenario_df, component_df)
-    return combined_scenarios
-
-
 def build_scenario_view(
     scenario_df: Optional[pd.DataFrame] = None,
     component_df: Optional[pd.DataFrame] = None,
@@ -908,11 +886,6 @@ def _import_pyarrow_parquet():
     return pq, pa
 
 
-# Backward-compatible aliases for older callers.
-build_final_scenario_tables = build_scenario_tables
-build_final_scenarios = build_scenarios
-build_final_scenario_view = build_scenario_view
-
 
 def _final_scenario_component_arrow_schema(pa):
     return pa.schema(
@@ -1109,53 +1082,44 @@ def run_inspection_costs_workflow(
 
     print("Starting inspection costs workflow")
     if not efficiency_long_path.exists():
-        if scenarios_enriched_path.exists():
-            print(f"Loading cached scenarios from {scenarios_enriched_path}")
-            scenarios = pd.read_parquet(scenarios_enriched_path)
-            costed_summary_df = scenarios
-        else:
-            if not scenarios_combined_path.exists():
-                print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
-                detection_lookup_table = build_detection_lookup_table(
-                    cluster_sizes=cluster_sizes,
-                    K_vals=k_vals,
-                    n_vals=n_vals,
-                    m_vals=m_vals,
-                )
-                print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+        print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
+        detection_lookup_table = build_detection_lookup_table(
+            cluster_sizes=cluster_sizes,
+            K_vals=k_vals,
+            n_vals=n_vals,
+            m_vals=m_vals,
+        )
+        print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
-                print("Building normalized final scenarios")
-                scenario_df, component_df = build_scenario_tables(
-                    cluster_sizes=cluster_sizes,
-                    detection_lookup_table=detection_lookup_table,
-                    k_vals=k_vals,
-                    target_chips=target_chips,
-                    steps=steps,
-                    return_dataframe=True,
-                )
-                combined_scenarios = build_scenario_view(scenario_df, component_df)
-                print(f"Scenario rows: {len(scenario_df)}")
-                print(f"Component rows: {len(component_df)}")
-                print(combined_scenarios.head())
+        print("Building normalized final scenarios")
+        scenario_df, component_df = build_scenario_tables(
+            cluster_sizes=cluster_sizes,
+            detection_lookup_table=detection_lookup_table,
+            k_vals=k_vals,
+            target_chips=target_chips,
+            steps=steps,
+            return_dataframe=True,
+        )
+        combined_scenarios = build_scenario_view(scenario_df, component_df)
+        print(f"Scenario rows: {len(scenario_df)}")
+        print(f"Component rows: {len(component_df)}")
+        print(combined_scenarios.head())
 
-                scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-                print(f"Saving combined scenarios to {scenarios_combined_path}")
-                combined_scenarios.to_parquet(scenarios_combined_path, index=False)
-            else:
-                print(f"Reimporting combined scenarios from {scenarios_combined_path}")
-                combined_scenarios = pd.read_parquet(scenarios_combined_path)
+        scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving combined scenarios to {scenarios_combined_path}")
+        combined_scenarios.to_parquet(scenarios_combined_path, index=False)
 
-            print("Adding cost and benefit columns")
-            scenarios = add_cost_benefit_columns(
-                combined_scenarios,
-                phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-                phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
-                plv_cost_per_total_chip=plv_cost_per_total_chip,
-                dollars_per_chip_detected=dollars_per_chip_detected,
-            )
-            print(f"Saving final scenarios to {scenarios_enriched_path}")
-            scenarios.to_parquet(scenarios_enriched_path, index=False)
-            costed_summary_df = scenarios
+        print("Adding cost and benefit columns")
+        scenarios = add_cost_benefit_columns(
+            combined_scenarios,
+            phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
+            phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
+            plv_cost_per_total_chip=plv_cost_per_total_chip,
+            dollars_per_chip_detected=dollars_per_chip_detected,
+        )
+        print(f"Saving final scenarios to {scenarios_enriched_path}")
+        scenarios.to_parquet(scenarios_enriched_path, index=False)
+        costed_summary_df = scenarios
 
         print("Building long-form efficiency table")
     else:
