@@ -859,16 +859,19 @@ def _summarize_relationship_counts(
         final_df.groupby(relationship_column, dropna=False)
         .size()
         .rename(count_column_name)
+        .reindex(list(relationship_labels.keys()), fill_value=0)
+        .rename_axis("Relationship Code")
         .reset_index()
-        .rename(columns={relationship_column: "Relationship Code"})
-        .sort_values("Relationship Code")
-        .reset_index(drop=True)
     )
     summary[f"{count_column_name} Description"] = summary["Relationship Code"].map(relationship_labels)
     return summary
 
 
 def _summarize_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
+    relationship_codes = list(NET_BENEFIT_RELATIONSHIP_LABELS.keys())
+    if list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys()) != relationship_codes:
+        raise ValueError("Net benefit and benefit-per-dollar relationship codes must match.")
+
     net_benefit_summary = _summarize_relationship_counts(
         final_df,
         NET_BENEFIT_RELATIONSHIP_COLUMN,
