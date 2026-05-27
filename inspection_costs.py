@@ -439,6 +439,12 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
 
     scenario_rows = []
     grouped = component_df.sort_values(["Scenario ID", "Cluster Size (N)"]).groupby("Scenario ID", sort=False)
+    total_scenarios = grouped.ngroups
+    progress_interval = max(1, total_scenarios // 10)
+    print(
+        f"_derive_scenario_summary_from_components: deriving {total_scenarios} scenario summaries "
+        f"from {len(component_df)} component rows"
+    )
     for scenario_id, group in grouped:
         mix_id, k_combo, n_combo = _parse_scenario_id(scenario_id)
         mix_description = " + ".join(
@@ -456,7 +462,14 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
                 "N Combo": n_combo,
             }
         )
+        if len(scenario_rows) % progress_interval == 0 or len(scenario_rows) == total_scenarios:
+            print(
+                f"_derive_scenario_summary_from_components: built {len(scenario_rows)}/{total_scenarios} scenario summaries"
+            )
 
+    print(
+        f"_derive_scenario_summary_from_components: completed {len(scenario_rows)} scenario summaries"
+    )
     return pd.DataFrame(scenario_rows)
 
 
