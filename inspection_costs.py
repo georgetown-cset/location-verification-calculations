@@ -21,13 +21,15 @@ SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
 SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
 LONG_SCENARIOS_PARQUET_PATH = f"{DATA_SAVED_DIR}/long_scenarios.parquet"
 REGRESSION_RESULT_JSON_PATH = f"{OUTPUT_DIR}/regression_result.json"
-NET_BENEFIT_RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/net_benefit_relationship_summary.csv"
+RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/relationship_summary.csv"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
 PLV_COST_PER_TOTAL_CHIP = (11, 125)
+DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
 PLV_BASIS_COLUMN = "Cluster Size (N)"
 NET_BENEFIT_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
+BENEFIT_PER_DOLLAR_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
 K_VALS = [1, 10, 100, 1000, 10000, 100000, 200000]
 N_VALS = [1, 10, 100, 1000]
@@ -38,12 +40,20 @@ LONG_SCENARIO_VALUE_VARS = (
     "Physical - Max Net Benefit",
     "PLV - Min Net Benefit",
     "PLV - Max Net Benefit",
+    "Physical - Min Benefit Per Dollar",
+    "Physical - Max Benefit Per Dollar",
+    "PLV - Min Benefit Per Dollar",
+    "PLV - Max Benefit Per Dollar",
 )
 LONG_SCENARIO_BENEFIT_SCENARIOS = {
     "Physical - Min Net Benefit": "Physical (Conservative)",
     "Physical - Max Net Benefit": "Physical (Optimistic)",
     "PLV - Min Net Benefit": "PLV (Conservative)",
     "PLV - Max Net Benefit": "PLV (Optimistic)",
+    "Physical - Min Benefit Per Dollar": "Physical (Conservative)",
+    "Physical - Max Benefit Per Dollar": "Physical (Optimistic)",
+    "PLV - Min Benefit Per Dollar": "PLV (Conservative)",
+    "PLV - Max Benefit Per Dollar": "PLV (Optimistic)",
 }
 NET_BENEFIT_RELATIONSHIP_COLUMN = "Physical vs PLV Net Benefit Relationship"
 NET_BENEFIT_RELATIONSHIP_LABELS = {
@@ -53,6 +63,15 @@ NET_BENEFIT_RELATIONSHIP_LABELS = {
     "d": "Physical min net benefit is within PLV net benefit range and Physical max net benefit is above PLV max net benefit",
     "e": "Physical min net benefit is greater than PLV max net benefit",
     "f": "Physical net benefit range spans both sides of PLV net benefit range",
+}
+BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN = "Physical vs PLV Benefit Per Dollar Relationship"
+BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS = {
+    "a": "Physical max benefit per dollar is less than PLV min benefit per dollar",
+    "b": "Physical max benefit per dollar is within PLV range and Physical min benefit per dollar is below PLV min benefit per dollar",
+    "c": "Physical min and max benefit per dollar are both within PLV range",
+    "d": "Physical min benefit per dollar is within PLV range and Physical max benefit per dollar is above PLV max benefit per dollar",
+    "e": "Physical min benefit per dollar is greater than PLV max benefit per dollar",
+    "f": "Physical benefit per dollar range spans both sides of PLV range",
 }
 
 
@@ -777,31 +796,112 @@ def _classify_net_benefit_relationship(summary_df: pd.DataFrame) -> pd.Series:
     return result
 
 
-def _summarize_net_benefit_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
-    """Return a compact count table for the net benefit relationship buckets."""
+def _classify_benefit_per_dollar_relationship(summary_df: pd.DataFrame) -> pd.Series:
+    """Classify the physical-inspection and PLV benefit-per-dollar intervals."""
 
-    if NET_BENEFIT_RELATIONSHIP_COLUMN not in final_df.columns:
+    physical_min = summary_df["Physical - Min Benefit Per Dollar"]
+    physical_max = summary_df["Physical - Max Benefit Per Dollar"]
+    plv_min = summary_df["PLV - Min Benefit Per Dollar"]
+    plv_max = summary_df["PLV - Max Benefit Per Dollar"]
+
+    relationship = np.select(
+        [
+            physical_max < plv_min,
+            physical_min > plv_max,
+            (physical_min < plv_min) & (physical_max > plv_max),
+            (plv_min <= physical_min) & (physical_max <= plv_max),
+            (physical_min < plv_min) & (plv_min <= physical_max) & (physical_max <= plv_max),
+            (plv_min <= physical_min) & (physical_min <= plv_max) & (plv_max < physical_max),
+        ],
+        [
+            "a",
+            "e",
+            "f",
+            "c",
+            "b",
+            "d",
+        ],
+        default="unknown",
+    )
+    result = pd.Series(
+        relationship,
+        index=summary_df.index,
+        name=BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
+    )
+    if (result == "unknown").any():
         raise ValueError(
-            f"{NET_BENEFIT_RELATIONSHIP_COLUMN!r} is missing from the final dataframe; "
-            "run add_cost_benefit_columns() first."
+            "Encountered an unexpected physical-vs-PLV benefit-per-dollar relationship; "
+            "check the interval classification logic."
+        )
+    return result
+
+
+def _summarize_relationship_counts(
+    final_df: pd.DataFrame,
+    relationship_column: str,
+    relationship_labels: dict[str, str],
+    count_column_name: str,
+) -> pd.DataFrame:
+    if relationship_column not in final_df.columns:
+        raise ValueError(
+            f"{relationship_column!r} is missing from the final dataframe; run add_cost_benefit_columns() first."
         )
 
     summary = (
-        final_df.groupby(NET_BENEFIT_RELATIONSHIP_COLUMN, dropna=False)
+        final_df.groupby(relationship_column, dropna=False)
         .size()
-        .rename("Scenario Count")
+        .rename(count_column_name)
         .reset_index()
-        .sort_values(NET_BENEFIT_RELATIONSHIP_COLUMN)
+        .rename(columns={relationship_column: "Relationship Code"})
+        .sort_values("Relationship Code")
         .reset_index(drop=True)
     )
-    summary["Relationship Description"] = summary[NET_BENEFIT_RELATIONSHIP_COLUMN].map(
-        NET_BENEFIT_RELATIONSHIP_LABELS
+    summary[f"{count_column_name} Description"] = summary["Relationship Code"].map(relationship_labels)
+    return summary
+
+
+def _summarize_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
+    net_benefit_summary = _summarize_relationship_counts(
+        final_df,
+        NET_BENEFIT_RELATIONSHIP_COLUMN,
+        NET_BENEFIT_RELATIONSHIP_LABELS,
+        "Net Benefit Scenario Count",
     )
+    benefit_per_dollar_summary = _summarize_relationship_counts(
+        final_df,
+        BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
+        BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS,
+        "Benefit Per Dollar Scenario Count",
+    )
+
+    summary = net_benefit_summary.merge(
+        benefit_per_dollar_summary[["Relationship Code", "Benefit Per Dollar Scenario Count"]],
+        on="Relationship Code",
+        how="outer",
+        validate="one_to_one",
+    )
+    summary["Net Benefit Relationship Description"] = summary["Relationship Code"].map(NET_BENEFIT_RELATIONSHIP_LABELS)
+    summary["Benefit Per Dollar Relationship Description"] = summary["Relationship Code"].map(
+        BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS
+    )
+    summary["Net Benefit Scenario Count"] = summary["Net Benefit Scenario Count"].fillna(0).astype(int)
+    summary["Benefit Per Dollar Scenario Count"] = summary["Benefit Per Dollar Scenario Count"].fillna(0).astype(int)
+    summary = summary[
+        [
+            "Relationship Code",
+            "Net Benefit Relationship Description",
+            "Benefit Per Dollar Relationship Description",
+            "Net Benefit Scenario Count",
+            "Benefit Per Dollar Scenario Count",
+        ]
+    ]
     total_row = pd.DataFrame(
         {
-            NET_BENEFIT_RELATIONSHIP_COLUMN: ["Total"],
-            "Scenario Count": [int(len(final_df))],
-            "Relationship Description": ["All scenarios"],
+            "Relationship Code": ["Total"],
+            "Net Benefit Relationship Description": ["All scenarios"],
+            "Benefit Per Dollar Relationship Description": ["All scenarios"],
+            "Net Benefit Scenario Count": [int(len(final_df))],
+            "Benefit Per Dollar Scenario Count": [int(len(final_df))],
         }
     )
     return pd.concat([summary, total_row], ignore_index=True)
@@ -872,25 +972,38 @@ def add_cost_benefit_columns(
         + result["Total Clusters in Mix"] * result["Tests (n)"] * phys_inspection_salary_cost_per_tested_chip[1]
     )
     result["Physical - Min Net Benefit"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"]
+        result["Physical Inspection - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[0]
         - result["Physical Inspection - Max Total Cost"]
     )
     result["Physical - Max Net Benefit"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"]
+        result["Physical Inspection - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[1]
         - result["Physical Inspection - Min Total Cost"]
+    )
+    result["Physical - Min Benefit Per Dollar"] = (
+        result["Physical Inspection - Total Diverted Chips Identified"] / result["Physical Inspection - Max Total Cost"]
+    )
+    result["Physical - Max Benefit Per Dollar"] = (
+        result["Physical Inspection - Total Diverted Chips Identified"] / result["Physical Inspection - Min Total Cost"]
     )
 
     result["PLV - Min Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[0]
     result["PLV - Max Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[1]
     result["PLV - Min Net Benefit"] = (
-        result["PLV - Total Diverted Chips Identified"]
+        result["PLV - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[0]
         - result["PLV - Max Total Cost"]
     )
     result["PLV - Max Net Benefit"] = (
-        result["PLV - Total Diverted Chips Identified"]
+        result["PLV - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[1]
         - result["PLV - Min Total Cost"]
     )
+    result["PLV - Min Benefit Per Dollar"] = (
+        result["PLV - Total Diverted Chips Identified"] / result["PLV - Max Total Cost"]
+    )
+    result["PLV - Max Benefit Per Dollar"] = (
+        result["PLV - Total Diverted Chips Identified"] / result["PLV - Min Total Cost"]
+    )
     result[NET_BENEFIT_RELATIONSHIP_COLUMN] = _classify_net_benefit_relationship(result)
+    result[BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN] = _classify_benefit_per_dollar_relationship(result)
 
     return result
 
@@ -899,13 +1012,13 @@ def _build_long_scenarios_dataframe(
     final_df: pd.DataFrame,
 ) -> pd.DataFrame:
     long_df = final_df.melt(
-        id_vars=[column for column in final_df.columns if "Net Benefit" not in column],
+        id_vars=[column for column in final_df.columns if column not in LONG_SCENARIO_VALUE_VARS],
         value_vars=list(LONG_SCENARIO_VALUE_VARS),
         var_name="Scenario Type",
-        value_name="Net Benefit ($)",
+        value_name="Benefit Per Dollar",
     )
     long_df["Benefit Scenario"] = long_df["Scenario Type"].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
-    long_df["Total Expected Value"] = np.where(
+    long_df["Total Benefit"] = np.where(
         long_df["Scenario Type"].str.startswith("Physical"),
         long_df["Physical Inspection - Total Diverted Chips Identified"],
         long_df["PLV - Total Diverted Chips Identified"],
@@ -959,7 +1072,7 @@ def build_long_scenarios(
 ) -> pd.DataFrame | None:
     if parquet_path is not None:
         parquet_path = Path(parquet_path)
-        if parquet_path.exists() and _parquet_file_has_columns(parquet_path, [NET_BENEFIT_RELATIONSHIP_COLUMN]):
+        if parquet_path.exists() and _parquet_file_has_columns(parquet_path, [BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN]):
             print(f"build_long_scenarios: reading cached table from {parquet_path}")
             if not materialize:
                 return None
@@ -967,7 +1080,7 @@ def build_long_scenarios(
         if parquet_path.exists():
             print(
                 f"build_long_scenarios: cached table at {parquet_path} is missing "
-                f"{NET_BENEFIT_RELATIONSHIP_COLUMN!r}; rebuilding"
+                f"{BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN!r}; rebuilding"
             )
 
     if final_df is None:
@@ -1010,11 +1123,11 @@ class LinearRegressionResult:
 
 def fit_long_scenario_model(
     long_df: pd.DataFrame,
-    feature_columns: Iterable[str] = NET_BENEFIT_FEATURE_COLUMNS,
+    feature_columns: Iterable[str] = BENEFIT_PER_DOLLAR_FEATURE_COLUMNS,
 ) -> LinearRegressionResult:
     features = list(feature_columns)
     X = long_df.loc[:, features].to_numpy(dtype=float)
-    y = long_df["Net Benefit ($)"].to_numpy(dtype=float)
+    y = long_df["Benefit Per Dollar"].to_numpy(dtype=float)
     X_design = np.column_stack([np.ones(len(X)), X])
     coefficients, *_ = np.linalg.lstsq(X_design, y, rcond=None)
     predictions = X_design @ coefficients
@@ -1026,7 +1139,7 @@ def fit_long_scenario_model(
 
 def fit_long_scenario_model_from_parquet(
     parquet_path: str | Path,
-    feature_columns: Iterable[str] = NET_BENEFIT_FEATURE_COLUMNS,
+    feature_columns: Iterable[str] = BENEFIT_PER_DOLLAR_FEATURE_COLUMNS,
     batch_size: int = 65_536,
 ) -> LinearRegressionResult:
     pq, _pa = _import_pyarrow_parquet()
@@ -1040,10 +1153,10 @@ def fit_long_scenario_model_from_parquet(
     row_count = 0
     parquet_file = pq.ParquetFile(parquet_path)
 
-    for batch in parquet_file.iter_batches(columns=[*features, "Net Benefit ($)"], batch_size=batch_size):
+    for batch in parquet_file.iter_batches(columns=[*features, "Benefit Per Dollar"], batch_size=batch_size):
         batch_df = batch.to_pandas()
         X = batch_df.loc[:, features].to_numpy(dtype=float)
-        y = batch_df["Net Benefit ($)"].to_numpy(dtype=float)
+        y = batch_df["Benefit Per Dollar"].to_numpy(dtype=float)
         X_design = np.column_stack([np.ones(len(X)), X])
         xtx += X_design.T @ X_design
         xty += X_design.T @ y
@@ -1081,7 +1194,7 @@ def run_inspection_costs_workflow(
     scenarios_combined_path = Path(SCENARIOS_COMBINED_PARQUET_PATH)
     scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
     long_scenarios_path = Path(LONG_SCENARIOS_PARQUET_PATH)
-    net_benefit_relationship_summary_path = Path(NET_BENEFIT_RELATIONSHIP_SUMMARY_CSV_PATH)
+    relationship_summary_path = Path(RELATIONSHIP_SUMMARY_CSV_PATH)
     detection_lookup_table = None
     scenario_df = None
     component_df = None
@@ -1093,9 +1206,9 @@ def run_inspection_costs_workflow(
     if scenarios_costed_path.exists():
         print(f"Loading cached costed scenarios from {scenarios_costed_path}")
         final_df = pd.read_parquet(scenarios_costed_path)
-        if NET_BENEFIT_RELATIONSHIP_COLUMN not in final_df.columns:
+        if NET_BENEFIT_RELATIONSHIP_COLUMN not in final_df.columns or BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN not in final_df.columns:
             print(
-                f"Cached costed scenarios are missing {NET_BENEFIT_RELATIONSHIP_COLUMN!r}; "
+                "Cached costed scenarios are missing one or more relationship columns; "
                 "recomputing and saving refreshed output"
             )
             final_df = add_cost_benefit_columns(
@@ -1151,13 +1264,13 @@ def run_inspection_costs_workflow(
         print(f"Saving final scenarios to {scenarios_costed_path}")
         final_df.to_parquet(scenarios_costed_path, index=False)
 
-    relationship_summary_df = _summarize_net_benefit_relationships(final_df)
-    net_benefit_relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
-    relationship_summary_df.to_csv(net_benefit_relationship_summary_path, index=False)
+    relationship_summary_df = _summarize_relationships(final_df)
+    relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
+    relationship_summary_df.to_csv(relationship_summary_path, index=False)
 
     if not long_scenarios_path.exists() or not _parquet_file_has_columns(
         long_scenarios_path,
-        [NET_BENEFIT_RELATIONSHIP_COLUMN],
+        [BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
     ):
         print("Building long scenarios table")
         long_df = build_long_scenarios(
