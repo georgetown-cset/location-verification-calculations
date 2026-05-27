@@ -14,7 +14,7 @@ import pandas as pd
 TARGET_CHIPS = 2_000_000
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
 SCENARIOS_PARQUET_PATH = "data/scenarios"
-EFFICIENCY_LONG_PARQUET_PATH = "data/efficiency_long.parquet"
+LONG_SCENARIOS_PARQUET_PATH = "data/long_scenarios.parquet"
 FINAL_SCENARIO_COMPONENT_DATASET_NAME = "scenario_components"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
@@ -793,22 +793,22 @@ def add_cost_benefit_columns(
     return result
 
 
-def build_efficiency_long_df(
-    summary_df: Optional[pd.DataFrame] = None,
+def build_long_scenarios(
+    final_df: Optional[pd.DataFrame] = None,
     dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
-    parquet_path: Optional[str | Path] = EFFICIENCY_LONG_PARQUET_PATH,
+    parquet_path: Optional[str | Path] = LONG_SCENARIOS_PARQUET_PATH,
 ) -> pd.DataFrame:
     if parquet_path is not None:
         parquet_path = Path(parquet_path)
         if parquet_path.exists():
-            print(f"build_efficiency_long_df: reading cached table from {parquet_path}")
+            print(f"build_long_scenarios: reading cached table from {parquet_path}")
             return pd.read_parquet(parquet_path)
 
-    if summary_df is None:
-        raise ValueError("summary_df is required when no cached efficiency table is available")
+    if final_df is None:
+        raise ValueError("final_df is required when no cached long scenarios table is available")
 
-    efficiency_long_df = summary_df.melt(
-        id_vars=[column for column in summary_df.columns if "Net Benefit" not in column],
+    long_df = final_df.melt(
+        id_vars=[column for column in final_df.columns if "Net Benefit" not in column],
         value_vars=[
             "Physical - Min Net Benefit",
             "Physical - Max Net Benefit",
@@ -819,7 +819,7 @@ def build_efficiency_long_df(
         value_name="Net Benefit ($)",
     )
 
-    efficiency_long_df["Benefit Scenario"] = efficiency_long_df["Scenario Type"].map(
+    long_df["Benefit Scenario"] = long_df["Scenario Type"].map(
         {
             "Physical - Min Net Benefit": "Physical (Conservative)",
             "Physical - Max Net Benefit": "Physical (Optimistic)",
@@ -827,16 +827,16 @@ def build_efficiency_long_df(
             "PLV - Max Net Benefit": "PLV (Optimistic)",
         }
     )
-    efficiency_long_df["Total Expected Value"] = np.where(
-        efficiency_long_df["Scenario Type"].str.startswith("Physical"),
-        efficiency_long_df["Physical Inspection - Total Diverted Chips Identified"],
-        efficiency_long_df["PLV - Total Diverted Chips Identified"],
+    long_df["Total Expected Value"] = np.where(
+        long_df["Scenario Type"].str.startswith("Physical"),
+        long_df["Physical Inspection - Total Diverted Chips Identified"],
+        long_df["PLV - Total Diverted Chips Identified"],
     ) * dollars_per_chip_detected[0]
     if parquet_path is not None:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"build_efficiency_long_df: writing table to {parquet_path}")
-        efficiency_long_df.to_parquet(parquet_path, index=False)
-    return efficiency_long_df
+        print(f"build_long_scenarios: writing table to {parquet_path}")
+        long_df.to_parquet(parquet_path, index=False)
+    return long_df
 
 
 @dataclass(frozen=True)
@@ -856,13 +856,13 @@ class LinearRegressionResult:
         return result
 
 
-def fit_net_benefit_model(
-    efficiency_long_df: pd.DataFrame,
+def fit_long_scenario_model(
+    long_df: pd.DataFrame,
     feature_columns: Iterable[str] = NET_BENEFIT_FEATURE_COLUMNS,
 ) -> LinearRegressionResult:
     features = list(feature_columns)
-    X = efficiency_long_df.loc[:, features].to_numpy(dtype=float)
-    y = efficiency_long_df["Net Benefit ($)"].to_numpy(dtype=float)
+    X = long_df.loc[:, features].to_numpy(dtype=float)
+    y = long_df["Net Benefit ($)"].to_numpy(dtype=float)
     X_design = np.column_stack([np.ones(len(X)), X])
     coefficients, *_ = np.linalg.lstsq(X_design, y, rcond=None)
     predictions = X_design @ coefficients
@@ -891,16 +891,15 @@ def run_inspection_costs_workflow(
     steps = list(steps) if steps is not None else None
     scenarios_combined_path = _scenarios_combined_parquet_path(Path(SCENARIOS_PARQUET_PATH))
     scenarios_enriched_path = _scenarios_enriched_parquet_path(Path(SCENARIOS_PARQUET_PATH))
-    efficiency_long_path = Path(EFFICIENCY_LONG_PARQUET_PATH)
+    long_scenarios_path = Path(LONG_SCENARIOS_PARQUET_PATH)
     detection_lookup_table = None
     scenario_df = None
     component_df = None
     combined_df = None
     final_df = None
-    costed_df = None
 
     print("Starting inspection costs workflow")
-    if not efficiency_long_path.exists():
+    if not long_scenarios_path.exists():
         print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
         detection_lookup_table = build_detection_lookup_table(
             cluster_sizes=cluster_sizes,
@@ -938,30 +937,26 @@ def run_inspection_costs_workflow(
         )
         print(f"Saving final scenarios to {scenarios_enriched_path}")
         final_df.to_parquet(scenarios_enriched_path, index=False)
-        costed_df = final_df
 
-        print("Building long-form efficiency table")
+        print("Building long scenarios table")
     else:
-        print(f"Loading cached efficiency table from {efficiency_long_path}")
+        print(f"Loading cached long scenarios from {long_scenarios_path}")
 
-    efficiency_long_df = build_efficiency_long_df(
-        costed_df if not efficiency_long_path.exists() else None,
+    long_df = build_long_scenarios(
+        final_df if not long_scenarios_path.exists() else None,
         dollars_per_chip_detected=dollars_per_chip_detected,
-        parquet_path=efficiency_long_path,
+        parquet_path=long_scenarios_path,
     )
 
-    print("Fitting net benefit model")
-    regression_result = fit_net_benefit_model(efficiency_long_df)
+    print("Fitting long-scenario model")
+    regression_result = fit_long_scenario_model(long_df)
     print("Inspection costs workflow complete")
     return {
-        "detection_lookup_table": detection_lookup_table,
         "scenario_df": scenario_df,
         "component_df": component_df,
         "combined_df": combined_df,
         "final_df": final_df,
-        "summary_df": final_df,
-        "costed_df": costed_df,
-        "efficiency_long_df": efficiency_long_df,
+        "long_df": long_df,
         "regression_result": regression_result,
     }
 
