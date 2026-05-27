@@ -1,2 +1,4 @@
 __pycache__/
 .DS_Store
+data/scenarios/scenarios_combined.parquet
+data/scenarios/scenarios_enriched.parquet
