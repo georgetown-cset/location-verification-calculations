@@ -133,6 +133,7 @@ def build_mix_data(
             )
 
         if current_mix:
+            current_mix.sort(key=lambda component: component["Cluster Size (N)"])
             mix_id = build_mix_id(current_mix)
             if mix_id in seen_mix_ids:
                 continue
@@ -226,6 +227,7 @@ def build_mix_description(mix_components: list[dict[str, int]]) -> str:
 
 
 def build_mix_id(mix_components: list[dict[str, int]]) -> str:
+    mix_components = sorted(mix_components, key=lambda component: component["Cluster Size (N)"])
     characteristics = "_".join(
         f"N{component['Cluster Size (N)']}-C{component['Number of Clusters']}"
         for component in mix_components
