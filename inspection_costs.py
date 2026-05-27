@@ -911,8 +911,9 @@ def _summarize_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
 def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFrame:
     """Return tidy rows for box plots split by relationship category and metric family."""
 
-    net_benefit_df = final_df[
-        [
+    net_benefit_source_columns = [
+        column
+        for column in [
             "Mix ID",
             "Scenario ID",
             NET_BENEFIT_RELATIONSHIP_COLUMN,
@@ -921,8 +922,11 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
             "PLV - Min Net Benefit",
             "PLV - Max Net Benefit",
         ]
-    ].melt(
-        id_vars=["Mix ID", "Scenario ID", NET_BENEFIT_RELATIONSHIP_COLUMN],
+        if column in final_df.columns
+    ]
+    net_benefit_id_vars = [column for column in ["Mix ID", "Scenario ID", NET_BENEFIT_RELATIONSHIP_COLUMN] if column in net_benefit_source_columns]
+    net_benefit_df = final_df[net_benefit_source_columns].melt(
+        id_vars=net_benefit_id_vars,
         value_vars=[
             "Physical - Min Net Benefit",
             "Physical - Max Net Benefit",
@@ -936,8 +940,9 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
     net_benefit_df["Relationship Code"] = net_benefit_df[NET_BENEFIT_RELATIONSHIP_COLUMN]
     net_benefit_df["Relationship Description"] = net_benefit_df["Relationship Code"].map(NET_BENEFIT_RELATIONSHIP_LABELS)
 
-    benefit_per_dollar_df = final_df[
-        [
+    benefit_per_dollar_source_columns = [
+        column
+        for column in [
             "Mix ID",
             "Scenario ID",
             BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
@@ -946,8 +951,13 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
             "PLV - Min Benefit Per Dollar",
             "PLV - Max Benefit Per Dollar",
         ]
-    ].melt(
-        id_vars=["Mix ID", "Scenario ID", BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN],
+        if column in final_df.columns
+    ]
+    benefit_per_dollar_id_vars = [
+        column for column in ["Mix ID", "Scenario ID", BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN] if column in benefit_per_dollar_source_columns
+    ]
+    benefit_per_dollar_df = final_df[benefit_per_dollar_source_columns].melt(
+        id_vars=benefit_per_dollar_id_vars,
         value_vars=[
             "Physical - Min Benefit Per Dollar",
             "Physical - Max Benefit Per Dollar",
@@ -970,19 +980,17 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         "PLV",
     )
     boxplot_df["Scenario Variant"] = boxplot_df["Scenario Type"].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
-    boxplot_df = boxplot_df[
-        [
-            "Metric Family",
-            "Relationship Code",
-            "Relationship Description",
-            "Scenario Group",
-            "Scenario Variant",
-            "Mix ID",
-            "Scenario ID",
-            "Scenario Type",
-            "Value",
-        ]
+    output_columns = [
+        "Metric Family",
+        "Relationship Code",
+        "Relationship Description",
+        "Scenario Group",
+        "Scenario Variant",
     ]
+    if "Mix ID" in boxplot_df.columns:
+        output_columns.append("Mix ID")
+    output_columns.extend(["Scenario ID", "Scenario Type", "Value"])
+    boxplot_df = boxplot_df[output_columns]
     return boxplot_df
 
 
