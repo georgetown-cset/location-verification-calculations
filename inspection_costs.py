@@ -15,6 +15,7 @@ import pandas as pd
 TARGET_CHIPS = 2_000_000
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = "data/detection_lookup_table.parquet"
 SCENARIOS_PARQUET_PATH = "data/scenarios"
+EFFICIENCY_LONG_PARQUET_PATH = "data/efficiency_long.parquet"
 FINAL_SCENARIO_COMPONENT_DATASET_NAME = "scenario_components"
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
@@ -1049,9 +1050,19 @@ def add_cost_benefit_columns(
 
 
 def build_efficiency_long_df(
-    summary_df: pd.DataFrame,
+    summary_df: Optional[pd.DataFrame] = None,
     dollars_per_chip_detected: tuple[float, float] = DOLLARS_PER_CHIP_DETECTED,
+    parquet_path: Optional[str | Path] = EFFICIENCY_LONG_PARQUET_PATH,
 ) -> pd.DataFrame:
+    if parquet_path is not None:
+        parquet_path = Path(parquet_path)
+        if parquet_path.exists():
+            print(f"build_efficiency_long_df: reading cached table from {parquet_path}")
+            return pd.read_parquet(parquet_path)
+
+    if summary_df is None:
+        raise ValueError("summary_df is required when no cached efficiency table is available")
+
     efficiency_long_df = summary_df.melt(
         id_vars=[column for column in summary_df.columns if "Net Benefit" not in column],
         value_vars=[
@@ -1077,6 +1088,10 @@ def build_efficiency_long_df(
         efficiency_long_df["Physical Inspection - Total Diverted Chips Identified"],
         efficiency_long_df["PLV - Total Diverted Chips Identified"],
     ) * dollars_per_chip_detected[0]
+    if parquet_path is not None:
+        parquet_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"build_efficiency_long_df: writing table to {parquet_path}")
+        efficiency_long_df.to_parquet(parquet_path, index=False)
     return efficiency_long_df
 
 
@@ -1130,57 +1145,65 @@ def run_inspection_costs_workflow(
     n_vals = list(n_vals)
     m_vals = list(m_vals)
     steps = list(steps) if steps is not None else None
+    efficiency_long_path = Path(EFFICIENCY_LONG_PARQUET_PATH)
 
     print("Starting inspection costs workflow")
-    print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
-    detection_lookup_table = build_detection_lookup_table(
-        cluster_sizes=cluster_sizes,
-        K_vals=k_vals,
-        n_vals=n_vals,
-        m_vals=m_vals,
-    )
-    print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+    if not efficiency_long_path.exists():
 
-    print("Building normalized final scenarios")
-    scenario_df, component_df = build_scenario_tables(
-        cluster_sizes=cluster_sizes,
-        detection_lookup_table=detection_lookup_table,
-        k_vals=k_vals,
-        target_chips=target_chips,
-        steps=steps,
-        return_dataframe=True,
-    )
-    combined_scenarios = build_scenario_view(scenario_df, component_df)
-    print(f"Scenario rows: {len(scenario_df)}")
-    print(f"Component rows: {len(component_df)}")
-    print(combined_scenarios.head())
+        print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
+        detection_lookup_table = build_detection_lookup_table(
+            cluster_sizes=cluster_sizes,
+            K_vals=k_vals,
+            n_vals=n_vals,
+            m_vals=m_vals,
+        )
+        print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
-    combined_output_path = _scenarios_combined_parquet_path(Path(SCENARIOS_PARQUET_PATH))
-    final_output_path = _scenarios_enriched_parquet_path(Path(SCENARIOS_PARQUET_PATH))
-    combined_output_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Saving combined scenarios to {combined_output_path}")
-    combined_scenarios.to_parquet(combined_output_path, index=False)
+        print("Building normalized final scenarios")
+        scenario_df, component_df = build_scenario_tables(
+            cluster_sizes=cluster_sizes,
+            detection_lookup_table=detection_lookup_table,
+            k_vals=k_vals,
+            target_chips=target_chips,
+            steps=steps,
+            return_dataframe=True,
+        )
+        combined_scenarios = build_scenario_view(scenario_df, component_df)
+        print(f"Scenario rows: {len(scenario_df)}")
+        print(f"Component rows: {len(component_df)}")
+        print(combined_scenarios.head())
 
-    print(f"Reimporting combined scenarios from {combined_output_path}")
-    combined_scenarios = pd.read_parquet(combined_output_path)
+        combined_output_path = _scenarios_combined_parquet_path(Path(SCENARIOS_PARQUET_PATH))
+        final_output_path = _scenarios_enriched_parquet_path(Path(SCENARIOS_PARQUET_PATH))
+        combined_output_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving combined scenarios to {combined_output_path}")
+        combined_scenarios.to_parquet(combined_output_path, index=False)
 
-    print("Adding detection metrics after reimport")
-    scenarios = enrich_scenarios_with_detection(combined_scenarios, detection_lookup_table)
-    print(f"Saving final enriched scenarios to {final_output_path}")
-    scenarios.to_parquet(final_output_path, index=False)
+        print(f"Reimporting combined scenarios from {combined_output_path}")
+        combined_scenarios = pd.read_parquet(combined_output_path)
 
-    print("Adding cost and benefit columns")
-    costed_summary_df = add_cost_benefit_columns(
-        scenarios,
-        phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-        phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
-        plv_cost_per_total_chip=plv_cost_per_total_chip,
-        dollars_per_chip_detected=dollars_per_chip_detected,
-    )
-    print("Building long-form efficiency table")
+        print("Adding detection metrics after reimport")
+        scenarios = enrich_scenarios_with_detection(combined_scenarios, detection_lookup_table)
+        print(f"Saving final enriched scenarios to {final_output_path}")
+        scenarios.to_parquet(final_output_path, index=False)
+
+        print("Adding cost and benefit columns")
+        costed_summary_df = add_cost_benefit_columns(
+            scenarios,
+            phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
+            phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
+            plv_cost_per_total_chip=plv_cost_per_total_chip,
+            dollars_per_chip_detected=dollars_per_chip_detected,
+        )
+
+        print("Building long-form efficiency table")
+    else:
+        print(f"Loading cached efficiency table from {efficiency_long_path}")
+    
     efficiency_long_df = build_efficiency_long_df(
         costed_summary_df,
         dollars_per_chip_detected=dollars_per_chip_detected,
+        parquet_path=efficiency_long_path,
     )
     print("Fitting net benefit model")
     regression_result = fit_net_benefit_model(efficiency_long_df)
