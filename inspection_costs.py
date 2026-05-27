@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import itertools
 import math
-import re
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -24,7 +23,6 @@ PLV_COST_PER_TOTAL_CHIP = (11, 125)
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
 PLV_BASIS_COLUMN = "Cluster Size (N)"
 NET_BENEFIT_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
-FINAL_SCENARIOS_MAX_FRAGMENT_BYTES = 100 * 1024 * 1024
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
 K_VALS = [1, 10, 100, 1000, 10000, 100000, 200000]
 N_VALS = [1, 10, 100, 1000]
@@ -485,13 +483,6 @@ def _derive_scenario_summary_from_components(component_df: pd.DataFrame) -> pd.D
     return scenario_summary
 
 
-def _parse_scenario_id(scenario_id: str) -> tuple[str, str, str]:
-    match = re.fullmatch(r"(?P<mix_id>.+)_K(?P<k_combo>[\d-]+)_n(?P<n_combo>[\d-]+)", scenario_id)
-    if match is None:
-        raise ValueError(f"Invalid Scenario ID format: {scenario_id}")
-    return match.group("mix_id"), match.group("k_combo"), match.group("n_combo")
-
-
 def _scenario_component_dataset_path(parquet_path: Path) -> Path:
     return parquet_path / FINAL_SCENARIO_COMPONENT_DATASET_NAME
 
@@ -526,14 +517,6 @@ def _count_scenarios_in_component_file(mix_parquet_path: Path, pq) -> int:
     for batch in parquet_file.iter_batches(columns=["Scenario ID"]):
         scenario_ids.update(str(scenario_id) for scenario_id in batch.column(0).to_pylist())
     return len(scenario_ids)
-
-
-def _mix_dataset_dir(dataset_path: Path, mix_id: str) -> Path:
-    safe_mix_id = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in mix_id)
-    shard = _mix_id_shard(safe_mix_id)
-    mix_dir = dataset_path / shard / safe_mix_id
-    mix_dir.mkdir(parents=True, exist_ok=True)
-    return mix_dir
 
 
 def _write_scenario_dataset_to_parquet(
@@ -663,131 +646,6 @@ def _build_final_scenario_records_for_mix(
     return scenario_records, component_records
 
 
-def _write_scenarios_mix_to_parquet(
-    parquet_path: Path,
-    mix_id: str,
-    records: list[tuple[object, ...]],
-    columns: list[str],
-) -> list[Path]:
-    pq, pa = _import_pyarrow_parquet()
-    _ensure_scenarios_dataset_path(parquet_path)
-    mix_parquet_path = _mix_parquet_path(parquet_path, mix_id)
-    _clear_existing_mix_fragments(mix_parquet_path)
-    if not records:
-        table = _empty_scenarios_table(pa)
-        pq.write_table(table, mix_parquet_path)
-        return [mix_parquet_path]
-
-    return _write_final_scenario_fragments_with_size_cap(
-        records=records,
-        fragment_path=mix_parquet_path,
-        pq=pq,
-        pa=pa,
-    schema=_scenarios_arrow_schema(pa),
-    )
-
-
-def _read_processed_mix_ids_from_parquet(parquet_path: Path) -> set[str]:
-    if not parquet_path.exists():
-        return set()
-
-    processed_mix_ids: set[str] = set()
-    invalid_mix_ids: set[str] = set()
-    pq, _pa = _import_pyarrow_parquet()
-
-    for mix_parquet_path in parquet_path.rglob("*.parquet"):
-        try:
-            parquet_file = pq.ParquetFile(mix_parquet_path)
-            mix_ids_in_file: set[str] = set()
-            for batch in parquet_file.iter_batches(columns=["Mix ID"]):
-                mix_ids_in_file.update(str(mix_id) for mix_id in batch.column(0).to_pylist())
-            if len(mix_ids_in_file) != 1:
-                if mix_ids_in_file:
-                    print(
-                        f"build_scenarios: ignoring {mix_parquet_path}; "
-                        f"expected one Mix ID but found {len(mix_ids_in_file)}"
-                    )
-                continue
-
-            mix_id = next(iter(mix_ids_in_file))
-            if mix_parquet_path.stat().st_size > FINAL_SCENARIOS_MAX_FRAGMENT_BYTES:
-                invalid_mix_ids.add(mix_id)
-                print(
-                    f"build_scenarios: ignoring {mix_parquet_path}; "
-                    f"fragment exceeds {FINAL_SCENARIOS_MAX_FRAGMENT_BYTES:,} byte limit"
-                )
-                continue
-
-            if not _final_scenario_fragment_is_current_version(mix_parquet_path, pq):
-                invalid_mix_ids.add(mix_id)
-                print(
-                    f"build_scenarios: ignoring {mix_parquet_path}; "
-                    "fragment does not match the current mix/k/n scenario format"
-                )
-                continue
-
-            processed_mix_ids.add(mix_id)
-        except Exception as exc:
-            print(f"build_scenarios: ignoring unreadable parquet fragment {mix_parquet_path}: {exc}")
-    return processed_mix_ids - invalid_mix_ids
-
-
-def _final_scenario_fragment_is_current_version(mix_parquet_path: Path, pq) -> bool:
-    scenario_id_pattern = re.compile(r".+_K(?:\d+-)*\d+_n(?:\d+-)*\d+$")
-    parquet_file = pq.ParquetFile(mix_parquet_path)
-    saw_any_ids = False
-
-    for batch in parquet_file.iter_batches(columns=["Scenario ID"]):
-        scenario_ids = [str(scenario_id) for scenario_id in batch.column(0).to_pylist()]
-        if scenario_ids:
-            saw_any_ids = True
-        if any(not scenario_id_pattern.fullmatch(scenario_id) for scenario_id in scenario_ids):
-            return False
-
-    return saw_any_ids
-
-
-def _write_final_scenario_fragments_with_size_cap(
-    *,
-    records: list[tuple[object, ...]],
-    fragment_path: Path,
-    pq,
-    pa,
-    schema,
-) -> list[Path]:
-    _ensure_scenarios_dataset_path(fragment_path.parent)
-    table = _records_to_arrow_table(records, pa, schema)
-    pq.write_table(table, fragment_path)
-
-    if fragment_path.stat().st_size <= FINAL_SCENARIOS_MAX_FRAGMENT_BYTES or len(records) <= 1:
-        return [fragment_path]
-
-    fragment_path.unlink(missing_ok=True)
-    midpoint = len(records) // 2
-    left_path = _split_fragment_path(fragment_path, "part0001")
-    right_path = _split_fragment_path(fragment_path, "part0002")
-    return (
-        _write_final_scenario_fragments_with_size_cap(
-            records=records[:midpoint],
-            fragment_path=left_path,
-            pq=pq,
-            pa=pa,
-            schema=schema,
-        )
-        + _write_final_scenario_fragments_with_size_cap(
-            records=records[midpoint:],
-            fragment_path=right_path,
-            pq=pq,
-            pa=pa,
-            schema=schema,
-        )
-    )
-
-
-def _split_fragment_path(fragment_path: Path, suffix: str) -> Path:
-    return fragment_path.with_name(f"{fragment_path.stem}_{suffix}{fragment_path.suffix}")
-
-
 def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
     mix_dir = mix_parquet_path.parent
     fragment_stem = mix_parquet_path.stem
@@ -796,34 +654,8 @@ def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
             existing_path.unlink()
 
 
-def _empty_scenarios_table(pa):
-    schema = _scenarios_arrow_schema(pa)
-    return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
-
-
 def _empty_arrow_table(pa, schema):
     return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
-
-
-def _write_complete_scenarios_parquet(component_parquet_path: Path, complete_parquet_path: Path) -> None:
-    pq, pa = _import_pyarrow_parquet()
-    _ensure_scenarios_dataset_path(component_parquet_path)
-    complete_parquet_path.parent.mkdir(parents=True, exist_ok=True)
-    schema = _scenarios_arrow_schema(pa)
-    fragment_paths = sorted(component_parquet_path.rglob("*.parquet"))
-
-    writer = pq.ParquetWriter(complete_parquet_path, schema)
-    try:
-        if not fragment_paths:
-            writer.write_table(pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema))
-            return
-
-        for fragment_path in fragment_paths:
-            fragment_file = pq.ParquetFile(fragment_path)
-            for batch in fragment_file.iter_batches():
-                writer.write_table(pa.Table.from_batches([batch], schema=schema))
-    finally:
-        writer.close()
 
 
 def _scenarios_combined_parquet_path(base_path: Path) -> Path:
@@ -841,12 +673,6 @@ def _ensure_scenarios_dataset_path(parquet_path: Path) -> None:
     parquet_path.mkdir(parents=True, exist_ok=True)
 
 
-def _complete_parquet_path(component_parquet_path: Path) -> Path:
-    if component_parquet_path.suffix == ".parquet":
-        return component_parquet_path.with_name(f"{component_parquet_path.stem}_complete.parquet")
-    return component_parquet_path.with_suffix(".parquet")
-
-
 def _mix_parquet_path(parquet_path: Path, mix_id: str) -> Path:
     safe_mix_id = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in mix_id)
     shard = _mix_id_shard(safe_mix_id)
@@ -860,13 +686,6 @@ def _mix_id_shard(safe_mix_id: str) -> str:
         safe_mix_id = safe_mix_id.removeprefix("ClusterMix_")
     first_component = safe_mix_id.split("_", 1)[0]
     return first_component or "unknown"
-
-
-def _scenarios_records_to_arrow_table(records: list[tuple[object, ...]], columns: list[str], pa):
-    return pa.Table.from_arrays(
-        [pa.array(values) for values in zip(*records)],
-        schema=_scenarios_arrow_schema(pa),
-    )
 
 
 def _records_to_arrow_table(records: list[tuple[object, ...]], pa, schema):
