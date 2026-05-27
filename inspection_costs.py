@@ -661,8 +661,8 @@ def _empty_arrow_table(pa, schema):
 def _scenarios_combined_parquet_path(base_path: Path) -> Path:
     return base_path / "scenarios_combined.parquet"
 
-def _scenarios_enriched_parquet_path(base_path: Path) -> Path:
-    return base_path / "scenarios_enriched.parquet"
+def _scenarios_costed_parquet_path(base_path: Path) -> Path:
+    return base_path / "scenarios_costed.parquet"
 
 def _ensure_scenarios_dataset_path(parquet_path: Path) -> None:
     if parquet_path.exists() and not parquet_path.is_dir():
@@ -890,7 +890,7 @@ def run_inspection_costs_workflow(
     m_vals = list(m_vals)
     steps = list(steps) if steps is not None else None
     scenarios_combined_path = _scenarios_combined_parquet_path(Path(SCENARIOS_PARQUET_PATH))
-    scenarios_enriched_path = _scenarios_enriched_parquet_path(Path(SCENARIOS_PARQUET_PATH))
+    scenarios_costed_path = _scenarios_costed_parquet_path(Path(SCENARIOS_PARQUET_PATH))
     long_scenarios_path = Path(LONG_SCENARIOS_PARQUET_PATH)
     detection_lookup_table = None
     scenario_df = None
@@ -935,8 +935,8 @@ def run_inspection_costs_workflow(
             plv_cost_per_total_chip=plv_cost_per_total_chip,
             dollars_per_chip_detected=dollars_per_chip_detected,
         )
-        print(f"Saving final scenarios to {scenarios_enriched_path}")
-        final_df.to_parquet(scenarios_enriched_path, index=False)
+        print(f"Saving final scenarios to {scenarios_costed_path}")
+        final_df.to_parquet(scenarios_costed_path, index=False)
 
         print("Building long scenarios table")
     else:
