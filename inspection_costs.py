@@ -900,53 +900,66 @@ def run_inspection_costs_workflow(
 
     print("Starting inspection costs workflow")
     if not long_scenarios_path.exists():
-        print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
-        detection_lookup_table = build_detection_lookup_table(
-            cluster_sizes=cluster_sizes,
-            K_vals=k_vals,
-            n_vals=n_vals,
-            m_vals=m_vals,
-        )
-        print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+        if not scenarios_costed_path.exists():
+            if not scenarios_combined_path.exists():
+                print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
+                detection_lookup_table = build_detection_lookup_table(
+                    cluster_sizes=cluster_sizes,
+                    K_vals=k_vals,
+                    n_vals=n_vals,
+                    m_vals=m_vals,
+                )
+                print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
-        print("Building normalized final scenarios")
-        scenario_df, component_df = build_scenarios(
-            cluster_sizes=cluster_sizes,
-            detection_lookup_table=detection_lookup_table,
-            k_vals=k_vals,
-            target_chips=target_chips,
-            steps=steps,
-            return_dataframe=True,
-        )
-        combined_df = merge_scenarios(scenario_df, component_df)
-        print(f"Scenario rows: {len(scenario_df)}")
-        print(f"Component rows: {len(component_df)}")
-        print(combined_df.head())
+                print("Building normalized final scenarios")
+                scenario_df, component_df = build_scenarios(
+                    cluster_sizes=cluster_sizes,
+                    detection_lookup_table=detection_lookup_table,
+                    k_vals=k_vals,
+                    target_chips=target_chips,
+                    steps=steps,
+                    return_dataframe=True,
+                )
+                combined_df = merge_scenarios(scenario_df, component_df)
+                print(f"Scenario rows: {len(scenario_df)}")
+                print(f"Component rows: {len(component_df)}")
+                print(combined_df.head())
 
-        scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving combined scenarios to {scenarios_combined_path}")
-        combined_df.to_parquet(scenarios_combined_path, index=False)
+                scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
+                print(f"Saving combined scenarios to {scenarios_combined_path}")
+                combined_df.to_parquet(scenarios_combined_path, index=False)
+            else:
+                print(f"Loading cached combined scenarios from {scenarios_combined_path}")
+                combined_df = pd.read_parquet(scenarios_combined_path)
 
-        print("Adding cost and benefit columns")
-        final_df = add_cost_benefit_columns(
-            combined_df,
-            phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-            phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
-            plv_cost_per_total_chip=plv_cost_per_total_chip,
-            dollars_per_chip_detected=dollars_per_chip_detected,
-        )
-        print(f"Saving final scenarios to {scenarios_costed_path}")
-        final_df.to_parquet(scenarios_costed_path, index=False)
+            print("Adding cost and benefit columns")
+            final_df = add_cost_benefit_columns(
+                combined_df,
+                phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
+                phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
+                plv_cost_per_total_chip=plv_cost_per_total_chip,
+                dollars_per_chip_detected=dollars_per_chip_detected,
+            )
+            scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"Saving final scenarios to {scenarios_costed_path}")
+            final_df.to_parquet(scenarios_costed_path, index=False)
+        else:
+            print(f"Loading cached costed scenarios from {scenarios_costed_path}")
+            final_df = pd.read_parquet(scenarios_costed_path)
 
         print("Building long scenarios table")
+        long_df = build_long_scenarios(
+            final_df,
+            dollars_per_chip_detected=dollars_per_chip_detected,
+            parquet_path=long_scenarios_path,
+        )
     else:
         print(f"Loading cached long scenarios from {long_scenarios_path}")
-
-    long_df = build_long_scenarios(
-        final_df if not long_scenarios_path.exists() else None,
-        dollars_per_chip_detected=dollars_per_chip_detected,
-        parquet_path=long_scenarios_path,
-    )
+        long_df = build_long_scenarios(
+            None,
+            dollars_per_chip_detected=dollars_per_chip_detected,
+            parquet_path=long_scenarios_path,
+        )
 
     print("Fitting long-scenario model")
     regression_result = fit_long_scenario_model(long_df)
