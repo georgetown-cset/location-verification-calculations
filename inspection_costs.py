@@ -33,6 +33,64 @@ CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
 K_VALS = [1, 10, 100, 1000, 10000, 100000, 200000]
 N_VALS = [1, 10, 100, 1000]
 M_VALS = [0.05]
+COLUMN_NAMES = {
+    "mix_id": "Mix ID",
+    "scenario_id": "Scenario ID",
+    "mix_description": "Mix Description",
+    "total_clusters_in_mix": "Total Clusters in Mix",
+    "total_tests": "Total Tests",
+    "total_component_chips": "Total Component Chips",
+    "scenario_component_count": "Scenario Component Count",
+    "k_combo": "K Combo",
+    "n_combo": "N Combo",
+    "cluster_size": "Cluster Size (N)",
+    "bad_records": "Bad Records (K)",
+    "total_bad_records": "Total Bad Records",
+    "number_of_clusters": "Number of Clusters",
+    "tests": "Tests (n)",
+    "share_diverted": "Share Diverted",
+    "chip_level_miss_prob": "Chip-level Miss Prob (m)",
+    "physical_inspection_p_detect": "Physical Inspection - P(Detect)",
+    "physical_inspection_diverted_chips_identified": "Physical Inspection - Diverted Chips Identified",
+    "plv_p_detect": "PLV - P(Detect)",
+    "plv_diverted_chips_identified": "PLV - Diverted Chips Identified",
+    "physical_inspection_total_diverted_chips_identified": "Physical Inspection - Total Diverted Chips Identified",
+    "plv_total_diverted_chips_identified": "PLV - Total Diverted Chips Identified",
+    "metric_family": "Metric Family",
+    "relationship_code": "Relationship Code",
+    "relationship_description": "Relationship Description",
+    "scenario_group": "Scenario Group",
+    "scenario_variant": "Scenario Variant",
+    "scenario_type": "Scenario Type",
+    "value": "Value",
+    "scenario_count": "Scenario Count",
+    "net_benefit_relationship_description": "Net Benefit Relationship Description",
+    "benefit_per_dollar_relationship_description": "Benefit Per Dollar Relationship Description",
+    "net_benefit_scenario_count": "Net Benefit Scenario Count",
+    "benefit_per_dollar_scenario_count": "Benefit Per Dollar Scenario Count",
+}
+SCENARIO_COLUMNS = [
+    COLUMN_NAMES['mix_id'],
+    COLUMN_NAMES['scenario_id'],
+    COLUMN_NAMES['mix_description'],
+    COLUMN_NAMES['total_clusters_in_mix'],
+    COLUMN_NAMES['total_tests'],
+    COLUMN_NAMES['total_component_chips'],
+    COLUMN_NAMES['scenario_component_count'],
+    COLUMN_NAMES['k_combo'],
+    COLUMN_NAMES['n_combo'],
+    COLUMN_NAMES['cluster_size'],
+    COLUMN_NAMES['bad_records'],
+    COLUMN_NAMES['total_bad_records'],
+    COLUMN_NAMES['number_of_clusters'],
+    COLUMN_NAMES['tests'],
+    COLUMN_NAMES['physical_inspection_p_detect'],
+    COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
+    COLUMN_NAMES['plv_p_detect'],
+    COLUMN_NAMES['plv_diverted_chips_identified'],
+    COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
+    COLUMN_NAMES['plv_total_diverted_chips_identified'],
+]
 LONG_SCENARIO_VALUE_VARS = (
     "Physical - Min Net Benefit",
     "Physical - Max Net Benefit",
@@ -126,15 +184,15 @@ def build_detection_lookup_table(
                     plv_result = expected_value_detected_diversion(N, N, K, m)
                     rows.append(
                         {
-                            "Cluster Size (N)": int(N),
-                            "Tests (n)": int(n),
-                            "Bad Records (K)": int(K),
-                            "Share Diverted": K / N,
-                            "Chip-level Miss Prob (m)": float(m),
-                            "Physical Inspection - P(Detect)": physical_result["p_detect"],
-                            "Physical Inspection - Diverted Chips Identified": physical_result["diverted_chips_identified"],
-                            "PLV - P(Detect)": plv_result["p_detect"],
-                            "PLV - Diverted Chips Identified": plv_result["diverted_chips_identified"],
+                            COLUMN_NAMES['cluster_size']: int(N),
+                            COLUMN_NAMES['tests']: int(n),
+                            COLUMN_NAMES['bad_records']: int(K),
+                            COLUMN_NAMES['share_diverted']: K / N,
+                            COLUMN_NAMES['chip_level_miss_prob']: float(m),
+                            COLUMN_NAMES['physical_inspection_p_detect']: physical_result["p_detect"],
+                            COLUMN_NAMES['physical_inspection_diverted_chips_identified']: physical_result["diverted_chips_identified"],
+                            COLUMN_NAMES['plv_p_detect']: plv_result["p_detect"],
+                            COLUMN_NAMES['plv_diverted_chips_identified']: plv_result["diverted_chips_identified"],
                         }
                     )
     result = pd.DataFrame(rows)
@@ -168,18 +226,18 @@ def build_mix_data(
                 break
             current_mix.append(
                 {
-                    "Cluster Size (N)": int(cluster_size),
-                    "Number of Clusters": int(count),
+                    COLUMN_NAMES['cluster_size']: int(cluster_size),
+                    COLUMN_NAMES['number_of_clusters']: int(count),
                 }
             )
 
         if current_mix:
-            current_mix.sort(key=lambda component: component["Cluster Size (N)"])
+            current_mix.sort(key=lambda component: component[COLUMN_NAMES['cluster_size']])
             mix_id = build_mix_id(current_mix)
             if mix_id in seen_mix_ids:
                 continue
             for component in current_mix:
-                component["Mix ID"] = mix_id
+                component[COLUMN_NAMES['mix_id']] = mix_id
             valid_mixes.append(current_mix)
             seen_mix_ids.add(mix_id)
             print(
@@ -264,13 +322,13 @@ def _product_index(indices: list[int], base: int) -> int:
 
 
 def build_mix_description(mix_components: list[dict[str, int]]) -> str:
-    return " + ".join(f"{component['Number of Clusters']}x(N={component['Cluster Size (N)']})" for component in mix_components)
+    return " + ".join(f"{component[COLUMN_NAMES['number_of_clusters']]}x(N={component[COLUMN_NAMES['cluster_size']]})" for component in mix_components)
 
 
 def build_mix_id(mix_components: list[dict[str, int]]) -> str:
-    mix_components = sorted(mix_components, key=lambda component: component["Cluster Size (N)"])
+    mix_components = sorted(mix_components, key=lambda component: component[COLUMN_NAMES['cluster_size']])
     characteristics = "_".join(
-        f"N{component['Cluster Size (N)']}-C{component['Number of Clusters']}"
+        f"N{component[COLUMN_NAMES['cluster_size']]}-C{component[COLUMN_NAMES['number_of_clusters']]}"
         for component in mix_components
     )
     return f"ClusterMix_{characteristics}"
@@ -279,14 +337,14 @@ def build_mix_id(mix_components: list[dict[str, int]]) -> str:
 def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]]:
     grouped: dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]] = {}
     columns = [
-        "Cluster Size (N)",
-        "Bad Records (K)",
-        "Tests (n)",
-        "Chip-level Miss Prob (m)",
-        "Physical Inspection - P(Detect)",
-        "Physical Inspection - Diverted Chips Identified",
-        "PLV - P(Detect)",
-        "PLV - Diverted Chips Identified",
+        COLUMN_NAMES['cluster_size'],
+        COLUMN_NAMES['bad_records'],
+        COLUMN_NAMES['tests'],
+        COLUMN_NAMES['chip_level_miss_prob'],
+        COLUMN_NAMES['physical_inspection_p_detect'],
+        COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
+        COLUMN_NAMES['plv_p_detect'],
+        COLUMN_NAMES['plv_diverted_chips_identified'],
     ]
     for row in detection_lookup_table.loc[:, columns].itertuples(index=False, name=None):
         N, K, n, m, physical_p_detect, physical_identified, plv_p_detect, plv_identified = row
@@ -322,29 +380,6 @@ def build_scenarios(
         for cluster_size in cluster_sizes
     }
 
-    scenario_component_columns = [
-        "Mix ID",
-        "Scenario ID",
-        "Mix Description",
-        "Total Clusters in Mix",
-        "Total Tests",
-        "Total Component Chips",
-        "Scenario Component Count",
-        "K Combo",
-        "N Combo",
-        "Cluster Size (N)",
-        "Bad Records (K)",
-        "Total Bad Records",
-        "Number of Clusters",
-        "Tests (n)",
-        "Physical Inspection - P(Detect)",
-        "Physical Inspection - Diverted Chips Identified",
-        "PLV - P(Detect)",
-        "PLV - Diverted Chips Identified",
-        "Physical Inspection - Total Diverted Chips Identified",
-        "PLV - Total Diverted Chips Identified",
-    ]
-
     if return_dataframe is None:
         return_dataframe = output_parquet_path is None
 
@@ -357,7 +392,7 @@ def build_scenarios(
         _ensure_scenarios_dataset_path(component_dataset_path)
         pq, _pa = _import_pyarrow_parquet()
         for mix_components in mix_data:
-            mix_id = mix_components[0]["Mix ID"]
+            mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
             mix_parquet_path = _mix_parquet_path(component_dataset_path, mix_id)
             if mix_parquet_path.exists() and _component_mix_file_is_current_version(mix_parquet_path, pq):
                 mix_scenario_component_count = pq.ParquetFile(mix_parquet_path).metadata.num_rows
@@ -400,7 +435,7 @@ def build_scenarios(
 
         if return_dataframe:
             return pd.read_parquet(component_dataset_path)
-        return pd.DataFrame(columns=scenario_component_columns)
+        return pd.DataFrame(columns=SCENARIO_COLUMNS)
 
     scenario_component_records: list[tuple[object, ...]] = []
     for mix_components in mix_data:
@@ -415,7 +450,7 @@ def build_scenarios(
         total_scenarios += mix_scenario_count
         total_scenario_component_rows += mix_scenario_component_count
         print(
-            f"build_scenarios: finished {mix_components[0]['Mix ID']}; "
+            f"build_scenarios: finished {mix_components[0][COLUMN_NAMES['mix_id']]}; "
             f"scenario-component rows added={mix_scenario_component_count}, "
             f"total new scenario rows={total_scenarios}, total new scenario-component rows={total_scenario_component_rows}"
         )
@@ -426,45 +461,45 @@ def build_scenarios(
     )
 
     if return_dataframe:
-        return pd.DataFrame.from_records(scenario_component_records, columns=scenario_component_columns)
-    return pd.DataFrame(columns=scenario_component_columns)
+        return pd.DataFrame.from_records(scenario_component_records, columns=SCENARIO_COLUMNS)
+    return pd.DataFrame(columns=SCENARIO_COLUMNS)
 
 
 def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame) -> pd.DataFrame:
     if scenario_component_df.empty:
         return pd.DataFrame(
             columns=[
-                "Mix ID",
-                "Scenario ID",
-                "Mix Description",
-                "Total Clusters in Mix",
-                "Scenario Component Count",
-                "K Combo",
-                "N Combo",
-                "Total Tests",
-                "Total Component Chips",
-                "Bad Records (K)",
+                COLUMN_NAMES['mix_id'],
+                COLUMN_NAMES['scenario_id'],
+                COLUMN_NAMES['mix_description'],
+                COLUMN_NAMES['total_clusters_in_mix'],
+                COLUMN_NAMES['scenario_component_count'],
+                COLUMN_NAMES['k_combo'],
+                COLUMN_NAMES['n_combo'],
+                COLUMN_NAMES['total_tests'],
+                COLUMN_NAMES['total_component_chips'],
+                COLUMN_NAMES['bad_records'],
             ]
         )
 
     summary_source = scenario_component_df.loc[
         :,
         [
-            "Scenario ID",
-            "Mix ID",
-            "Mix Description",
-            "K Combo",
-            "N Combo",
-            "Total Tests",
-            "Total Component Chips",
-            "Total Bad Records",
-            "Number of Clusters",
-            "Physical Inspection - Total Diverted Chips Identified",
-            "PLV - Total Diverted Chips Identified",
+            COLUMN_NAMES['scenario_id'],
+            COLUMN_NAMES['mix_id'],
+            COLUMN_NAMES['mix_description'],
+            COLUMN_NAMES['k_combo'],
+            COLUMN_NAMES['n_combo'],
+            COLUMN_NAMES['total_tests'],
+            COLUMN_NAMES['total_component_chips'],
+            COLUMN_NAMES['total_bad_records'],
+            COLUMN_NAMES['number_of_clusters'],
+            COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
+            COLUMN_NAMES['plv_total_diverted_chips_identified'],
         ],
     ].copy()
 
-    grouped = summary_source.groupby("Scenario ID", sort=False, observed=True)
+    grouped = summary_source.groupby(COLUMN_NAMES['scenario_id'], sort=False, observed=True)
     total_scenarios = grouped.ngroups
     print(
         f"_derive_scenario_summary_from_components: deriving {total_scenarios} scenario summaries "
@@ -472,50 +507,50 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
     )
 
     scenario_summary = grouped.agg(
-        Mix_ID=("Mix ID", "first"),
-        Mix_Description=("Mix Description", "first"),
-        Total_Clusters_in_Mix=("Number of Clusters", "sum"),
-        Scenario_Component_Count=("Number of Clusters", "size"),
-        K_Combo=("K Combo", "first"),
-        N_Combo=("N Combo", "first"),
-        Total_Tests=("Total Tests", "sum"),
-        Total_Component_Chips=("Total Component Chips", "sum"),
-        Bad_Records=("Total Bad Records", "sum"),
+        Mix_ID=(COLUMN_NAMES['mix_id'], "first"),
+        Mix_Description=(COLUMN_NAMES['mix_description'], "first"),
+        Total_Clusters_in_Mix=(COLUMN_NAMES['number_of_clusters'], "sum"),
+        Scenario_Component_Count=(COLUMN_NAMES['number_of_clusters'], "size"),
+        K_Combo=(COLUMN_NAMES['k_combo'], "first"),
+        N_Combo=(COLUMN_NAMES['n_combo'], "first"),
+        Total_Tests=(COLUMN_NAMES['total_tests'], "sum"),
+        Total_Component_Chips=(COLUMN_NAMES['total_component_chips'], "sum"),
+        Bad_Records=(COLUMN_NAMES['total_bad_records'], "sum"),
         Physical_Inspection_Total_Diverted_Chips_Identified=(
-            "Physical Inspection - Total Diverted Chips Identified",
+            COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
             "sum",
         ),
-        PLV_Total_Diverted_Chips_Identified=("PLV - Total Diverted Chips Identified", "sum"),
+        PLV_Total_Diverted_Chips_Identified=(COLUMN_NAMES['plv_total_diverted_chips_identified'], "sum"),
     ).reset_index()
     scenario_summary = scenario_summary.rename(
         columns={
-            "Mix_ID": "Mix ID",
-            "Mix_Description": "Mix Description",
-            "Total_Clusters_in_Mix": "Total Clusters in Mix",
-            "Scenario_Component_Count": "Scenario Component Count",
-            "K_Combo": "K Combo",
-            "N_Combo": "N Combo",
-            "Total_Tests": "Total Tests",
-            "Total_Component_Chips": "Total Component Chips",
-            "Bad_Records": "Bad Records (K)",
-            "Physical_Inspection_Total_Diverted_Chips_Identified": "Physical Inspection - Total Diverted Chips Identified",
-            "PLV_Total_Diverted_Chips_Identified": "PLV - Total Diverted Chips Identified",
+            "Mix_ID": COLUMN_NAMES['mix_id'],
+            "Mix_Description": COLUMN_NAMES['mix_description'],
+            "Total_Clusters_in_Mix": COLUMN_NAMES['total_clusters_in_mix'],
+            "Scenario_Component_Count": COLUMN_NAMES['scenario_component_count'],
+            "K_Combo": COLUMN_NAMES['k_combo'],
+            "N_Combo": COLUMN_NAMES['n_combo'],
+            "Total_Tests": COLUMN_NAMES['total_tests'],
+            "Total_Component_Chips": COLUMN_NAMES['total_component_chips'],
+            "Bad_Records": COLUMN_NAMES['bad_records'],
+            "Physical_Inspection_Total_Diverted_Chips_Identified": COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
+            "PLV_Total_Diverted_Chips_Identified": COLUMN_NAMES['plv_total_diverted_chips_identified'],
         }
     )
     scenario_summary = scenario_summary[
         [
-            "Mix ID",
-            "Scenario ID",
-            "Mix Description",
-            "Total Clusters in Mix",
-            "Scenario Component Count",
-            "K Combo",
-            "N Combo",
-            "Total Tests",
-            "Total Component Chips",
-            "Bad Records (K)",
-            "Physical Inspection - Total Diverted Chips Identified",
-            "PLV - Total Diverted Chips Identified",
+            COLUMN_NAMES['mix_id'],
+            COLUMN_NAMES['scenario_id'],
+            COLUMN_NAMES['mix_description'],
+            COLUMN_NAMES['total_clusters_in_mix'],
+            COLUMN_NAMES['scenario_component_count'],
+            COLUMN_NAMES['k_combo'],
+            COLUMN_NAMES['n_combo'],
+            COLUMN_NAMES['total_tests'],
+            COLUMN_NAMES['total_component_chips'],
+            COLUMN_NAMES['bad_records'],
+            COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
+            COLUMN_NAMES['plv_total_diverted_chips_identified'],
         ]
     ]
 
@@ -527,25 +562,25 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
 
 def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
     expected_columns = [
-        "Mix ID",
-        "Scenario ID",
-        "Mix Description",
-        "Total Clusters in Mix",
-        "Total Tests",
-        "Total Component Chips",
-        "Scenario Component Count",
-        "K Combo",
-        "N Combo",
-        "Cluster Size (N)",
-        "Bad Records (K)",
-        "Number of Clusters",
-        "Tests (n)",
-        "Physical Inspection - P(Detect)",
-        "Physical Inspection - Diverted Chips Identified",
-        "PLV - P(Detect)",
-        "PLV - Diverted Chips Identified",
-        "Physical Inspection - Total Diverted Chips Identified",
-        "PLV - Total Diverted Chips Identified",
+        COLUMN_NAMES['mix_id'],
+        COLUMN_NAMES['scenario_id'],
+        COLUMN_NAMES['mix_description'],
+        COLUMN_NAMES['total_clusters_in_mix'],
+        COLUMN_NAMES['total_tests'],
+        COLUMN_NAMES['total_component_chips'],
+        COLUMN_NAMES['scenario_component_count'],
+        COLUMN_NAMES['k_combo'],
+        COLUMN_NAMES['n_combo'],
+        COLUMN_NAMES['cluster_size'],
+        COLUMN_NAMES['bad_records'],
+        COLUMN_NAMES['number_of_clusters'],
+        COLUMN_NAMES['tests'],
+        COLUMN_NAMES['physical_inspection_p_detect'],
+        COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
+        COLUMN_NAMES['plv_p_detect'],
+        COLUMN_NAMES['plv_diverted_chips_identified'],
+        COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
+        COLUMN_NAMES['plv_total_diverted_chips_identified'],
     ]
     try:
         parquet_file = pq.ParquetFile(mix_parquet_path)
@@ -557,7 +592,7 @@ def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
 def _count_scenarios_in_component_file(mix_parquet_path: Path, pq) -> int:
     parquet_file = pq.ParquetFile(mix_parquet_path)
     scenario_ids: set[str] = set()
-    for batch in parquet_file.iter_batches(columns=["Scenario ID"]):
+    for batch in parquet_file.iter_batches(columns=[COLUMN_NAMES['scenario_id']]):
         scenario_ids.update(str(scenario_id) for scenario_id in batch.column(0).to_pylist())
     return len(scenario_ids)
 
@@ -593,9 +628,9 @@ def _build_mix_records(
     skip_scenarios: int = 0,
 ) -> tuple[list[tuple[object, ...]], int, int]:
     scenario_component_records: list[tuple[object, ...]] = []
-    mix_id = mix_components[0]["Mix ID"]
+    mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
     mix_description = build_mix_description(mix_components)
-    total_clusters_in_mix = sum(component["Number of Clusters"] for component in mix_components)
+    total_clusters_in_mix = sum(component[COLUMN_NAMES['number_of_clusters']] for component in mix_components)
     scenario_component_count = len(mix_components)
     print(
         f"build_scenarios: processing {mix_id} ({mix_description}) "
@@ -604,10 +639,10 @@ def _build_mix_records(
 
     component_data = [
         (
-            component["Cluster Size (N)"],
-            component["Number of Clusters"],
-            (component["Cluster Size (N)"] * component["Number of Clusters"] / target_chips) * 100,
-            k_options_by_cluster_size[component["Cluster Size (N)"]],
+            component[COLUMN_NAMES['cluster_size']],
+            component[COLUMN_NAMES['number_of_clusters']],
+            (component[COLUMN_NAMES['cluster_size']] * component[COLUMN_NAMES['number_of_clusters']] / target_chips) * 100,
+            k_options_by_cluster_size[component[COLUMN_NAMES['cluster_size']]],
         )
         for component in mix_components
     ]
@@ -873,10 +908,10 @@ def _summarize_relationship_counts(
         .size()
         .rename(count_column_name)
         .reindex(list(relationship_labels.keys()), fill_value=0)
-        .rename_axis("Relationship Code")
+        .rename_axis(COLUMN_NAMES['relationship_code'])
         .reset_index()
     )
-    summary[f"{count_column_name} Description"] = summary["Relationship Code"].map(relationship_labels)
+    summary[f"{count_column_name} Description"] = summary[COLUMN_NAMES['relationship_code']].map(relationship_labels)
     return summary
 
 
@@ -899,33 +934,33 @@ def _summarize_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     summary = net_benefit_summary.merge(
-        benefit_per_dollar_summary[["Relationship Code", "Benefit Per Dollar Scenario Count"]],
-        on="Relationship Code",
+        benefit_per_dollar_summary[[COLUMN_NAMES['relationship_code'], COLUMN_NAMES['benefit_per_dollar_scenario_count']]],
+        on=COLUMN_NAMES['relationship_code'],
         how="outer",
         validate="one_to_one",
     )
-    summary["Net Benefit Relationship Description"] = summary["Relationship Code"].map(NET_BENEFIT_RELATIONSHIP_LABELS)
-    summary["Benefit Per Dollar Relationship Description"] = summary["Relationship Code"].map(
+    summary[COLUMN_NAMES['net_benefit_relationship_description']] = summary[COLUMN_NAMES['relationship_code']].map(NET_BENEFIT_RELATIONSHIP_LABELS)
+    summary[COLUMN_NAMES['benefit_per_dollar_relationship_description']] = summary[COLUMN_NAMES['relationship_code']].map(
         BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS
     )
-    summary["Net Benefit Scenario Count"] = summary["Net Benefit Scenario Count"].fillna(0).astype(int)
-    summary["Benefit Per Dollar Scenario Count"] = summary["Benefit Per Dollar Scenario Count"].fillna(0).astype(int)
+    summary[COLUMN_NAMES['net_benefit_scenario_count']] = summary[COLUMN_NAMES['net_benefit_scenario_count']].fillna(0).astype(int)
+    summary[COLUMN_NAMES['benefit_per_dollar_scenario_count']] = summary[COLUMN_NAMES['benefit_per_dollar_scenario_count']].fillna(0).astype(int)
     summary = summary[
         [
-            "Relationship Code",
-            "Net Benefit Relationship Description",
-            "Benefit Per Dollar Relationship Description",
-            "Net Benefit Scenario Count",
-            "Benefit Per Dollar Scenario Count",
+            COLUMN_NAMES['relationship_code'],
+            COLUMN_NAMES['net_benefit_relationship_description'],
+            COLUMN_NAMES['benefit_per_dollar_relationship_description'],
+            COLUMN_NAMES['net_benefit_scenario_count'],
+            COLUMN_NAMES['benefit_per_dollar_scenario_count'],
         ]
     ]
     total_row = pd.DataFrame(
         {
-            "Relationship Code": ["Total"],
-            "Net Benefit Relationship Description": ["All scenarios"],
-            "Benefit Per Dollar Relationship Description": ["All scenarios"],
-            "Net Benefit Scenario Count": [int(len(final_df))],
-            "Benefit Per Dollar Scenario Count": [int(len(final_df))],
+            COLUMN_NAMES['relationship_code']: ["Total"],
+            COLUMN_NAMES['net_benefit_relationship_description']: ["All scenarios"],
+            COLUMN_NAMES['benefit_per_dollar_relationship_description']: ["All scenarios"],
+            COLUMN_NAMES['net_benefit_scenario_count']: [int(len(final_df))],
+            COLUMN_NAMES['benefit_per_dollar_scenario_count']: [int(len(final_df))],
         }
     )
     return pd.concat([summary, total_row], ignore_index=True)
@@ -949,18 +984,18 @@ def _summarize_relationships_from_parquet(
 
     net_benefit_summary = pd.DataFrame(
         {
-            "Relationship Code": list(NET_BENEFIT_RELATIONSHIP_LABELS.keys()),
-            "Net Benefit Relationship Description": list(NET_BENEFIT_RELATIONSHIP_LABELS.values()),
-            "Net Benefit Scenario Count": [
+            COLUMN_NAMES['relationship_code']: list(NET_BENEFIT_RELATIONSHIP_LABELS.keys()),
+            COLUMN_NAMES['net_benefit_relationship_description']: list(NET_BENEFIT_RELATIONSHIP_LABELS.values()),
+            COLUMN_NAMES['net_benefit_scenario_count']: [
                 int(net_benefit_counts.get(code, 0)) for code in NET_BENEFIT_RELATIONSHIP_LABELS.keys()
             ],
         }
     )
     benefit_per_dollar_summary = pd.DataFrame(
         {
-            "Relationship Code": list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys()),
-            "Benefit Per Dollar Relationship Description": list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.values()),
-            "Benefit Per Dollar Scenario Count": [
+            COLUMN_NAMES['relationship_code']: list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys()),
+            COLUMN_NAMES['benefit_per_dollar_relationship_description']: list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.values()),
+            COLUMN_NAMES['benefit_per_dollar_scenario_count']: [
                 int(benefit_per_dollar_counts.get(code, 0)) for code in BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys()
             ],
         }
@@ -968,26 +1003,26 @@ def _summarize_relationships_from_parquet(
 
     summary = net_benefit_summary.merge(
         benefit_per_dollar_summary,
-        on="Relationship Code",
+        on=COLUMN_NAMES['relationship_code'],
         how="outer",
         validate="one_to_one",
     )
     summary = summary[
         [
-            "Relationship Code",
-            "Net Benefit Relationship Description",
-            "Benefit Per Dollar Relationship Description",
-            "Net Benefit Scenario Count",
-            "Benefit Per Dollar Scenario Count",
+            COLUMN_NAMES['relationship_code'],
+            COLUMN_NAMES['net_benefit_relationship_description'],
+            COLUMN_NAMES['benefit_per_dollar_relationship_description'],
+            COLUMN_NAMES['net_benefit_scenario_count'],
+            COLUMN_NAMES['benefit_per_dollar_scenario_count'],
         ]
     ]
     total_row = pd.DataFrame(
         {
-            "Relationship Code": ["Total"],
-            "Net Benefit Relationship Description": ["All scenarios"],
-            "Benefit Per Dollar Relationship Description": ["All scenarios"],
-            "Net Benefit Scenario Count": [int(sum(net_benefit_counts.values()))],
-            "Benefit Per Dollar Scenario Count": [int(sum(benefit_per_dollar_counts.values()))],
+            COLUMN_NAMES['relationship_code']: ["Total"],
+            COLUMN_NAMES['net_benefit_relationship_description']: ["All scenarios"],
+            COLUMN_NAMES['benefit_per_dollar_relationship_description']: ["All scenarios"],
+            COLUMN_NAMES['net_benefit_scenario_count']: [int(sum(net_benefit_counts.values()))],
+            COLUMN_NAMES['benefit_per_dollar_scenario_count']: [int(sum(benefit_per_dollar_counts.values()))],
         }
     )
     return pd.concat([summary, total_row], ignore_index=True)
@@ -999,8 +1034,8 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
     net_benefit_source_columns = [
         column
         for column in [
-            "Mix ID",
-            "Scenario ID",
+            COLUMN_NAMES['mix_id'],
+            COLUMN_NAMES['scenario_id'],
             NET_BENEFIT_RELATIONSHIP_COLUMN,
             "Physical - Min Net Benefit",
             "Physical - Max Net Benefit",
@@ -1009,7 +1044,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         ]
         if column in final_df.columns
     ]
-    net_benefit_id_vars = [column for column in ["Mix ID", "Scenario ID", NET_BENEFIT_RELATIONSHIP_COLUMN] if column in net_benefit_source_columns]
+    net_benefit_id_vars = [column for column in [COLUMN_NAMES['mix_id'], COLUMN_NAMES['scenario_id'], NET_BENEFIT_RELATIONSHIP_COLUMN] if column in net_benefit_source_columns]
     net_benefit_df = final_df[net_benefit_source_columns].melt(
         id_vars=net_benefit_id_vars,
         value_vars=[
@@ -1018,18 +1053,18 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
             "PLV - Min Net Benefit",
             "PLV - Max Net Benefit",
         ],
-        var_name="Scenario Type",
-        value_name="Value",
+        var_name=COLUMN_NAMES['scenario_type'],
+        value_name=COLUMN_NAMES['value'],
     )
-    net_benefit_df["Metric Family"] = "Net Benefit"
-    net_benefit_df["Relationship Code"] = net_benefit_df[NET_BENEFIT_RELATIONSHIP_COLUMN]
-    net_benefit_df["Relationship Description"] = net_benefit_df["Relationship Code"].map(NET_BENEFIT_RELATIONSHIP_LABELS)
+    net_benefit_df[COLUMN_NAMES['metric_family']] = "Net Benefit"
+    net_benefit_df[COLUMN_NAMES['relationship_code']] = net_benefit_df[NET_BENEFIT_RELATIONSHIP_COLUMN]
+    net_benefit_df[COLUMN_NAMES['relationship_description']] = net_benefit_df[COLUMN_NAMES['relationship_code']].map(NET_BENEFIT_RELATIONSHIP_LABELS)
 
     benefit_per_dollar_source_columns = [
         column
         for column in [
-            "Mix ID",
-            "Scenario ID",
+            COLUMN_NAMES['mix_id'],
+            COLUMN_NAMES['scenario_id'],
             BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
             "Physical - Min Benefit Per Dollar",
             "Physical - Max Benefit Per Dollar",
@@ -1039,7 +1074,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         if column in final_df.columns
     ]
     benefit_per_dollar_id_vars = [
-        column for column in ["Mix ID", "Scenario ID", BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN] if column in benefit_per_dollar_source_columns
+        column for column in [COLUMN_NAMES['mix_id'], COLUMN_NAMES['scenario_id'], BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN] if column in benefit_per_dollar_source_columns
     ]
     benefit_per_dollar_df = final_df[benefit_per_dollar_source_columns].melt(
         id_vars=benefit_per_dollar_id_vars,
@@ -1049,32 +1084,32 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
             "PLV - Min Benefit Per Dollar",
             "PLV - Max Benefit Per Dollar",
         ],
-        var_name="Scenario Type",
-        value_name="Value",
+        var_name=COLUMN_NAMES['scenario_type'],
+        value_name=COLUMN_NAMES['value'],
     )
-    benefit_per_dollar_df["Metric Family"] = "Benefit Per Dollar"
-    benefit_per_dollar_df["Relationship Code"] = benefit_per_dollar_df[BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN]
-    benefit_per_dollar_df["Relationship Description"] = benefit_per_dollar_df["Relationship Code"].map(
+    benefit_per_dollar_df[COLUMN_NAMES['metric_family']] = "Benefit Per Dollar"
+    benefit_per_dollar_df[COLUMN_NAMES['relationship_code']] = benefit_per_dollar_df[BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN]
+    benefit_per_dollar_df[COLUMN_NAMES['relationship_description']] = benefit_per_dollar_df[COLUMN_NAMES['relationship_code']].map(
         BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS
     )
 
     boxplot_df = pd.concat([net_benefit_df, benefit_per_dollar_df], ignore_index=True)
-    boxplot_df["Scenario Group"] = np.where(
-        boxplot_df["Scenario Type"].str.startswith("Physical"),
+    boxplot_df[COLUMN_NAMES['scenario_group']] = np.where(
+        boxplot_df[COLUMN_NAMES['scenario_type']].str.startswith("Physical"),
         "Physical Inspection",
         "PLV",
     )
-    boxplot_df["Scenario Variant"] = boxplot_df["Scenario Type"].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
+    boxplot_df[COLUMN_NAMES['scenario_variant']] = boxplot_df[COLUMN_NAMES['scenario_type']].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
     output_columns = [
-        "Metric Family",
-        "Relationship Code",
-        "Relationship Description",
-        "Scenario Group",
-        "Scenario Variant",
+        COLUMN_NAMES['metric_family'],
+        COLUMN_NAMES['relationship_code'],
+        COLUMN_NAMES['relationship_description'],
+        COLUMN_NAMES['scenario_group'],
+        COLUMN_NAMES['scenario_variant'],
     ]
-    if "Mix ID" in boxplot_df.columns:
-        output_columns.append("Mix ID")
-    output_columns.extend(["Scenario ID", "Scenario Type", "Value"])
+    if COLUMN_NAMES['mix_id'] in boxplot_df.columns:
+        output_columns.append(COLUMN_NAMES['mix_id'])
+    output_columns.extend([COLUMN_NAMES['scenario_id'], COLUMN_NAMES['scenario_type'], COLUMN_NAMES['value']])
     boxplot_df = boxplot_df[output_columns]
     return boxplot_df
 
@@ -1083,18 +1118,18 @@ def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.Da
     """Return box-plot summary statistics for each metric family and relationship group."""
 
     group_columns = [
-        "Metric Family",
-        "Relationship Code",
-        "Relationship Description",
-        "Scenario Group",
-        "Scenario Variant",
-        "Scenario Type",
+        COLUMN_NAMES['metric_family'],
+        COLUMN_NAMES['relationship_code'],
+        COLUMN_NAMES['relationship_description'],
+        COLUMN_NAMES['scenario_group'],
+        COLUMN_NAMES['scenario_variant'],
+        COLUMN_NAMES['scenario_type'],
     ]
     if boxplot_df.empty:
         return pd.DataFrame(
             columns=[
                 *group_columns,
-                "Scenario Count",
+                COLUMN_NAMES['scenario_count'],
                 "Min",
                 "Q1",
                 "Median",
@@ -1104,7 +1139,7 @@ def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.Da
             ]
         )
 
-    grouped = boxplot_df.groupby(group_columns, dropna=False)["Value"]
+    grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
     summary = grouped.agg(
         Scenario_Count="count",
         Min="min",
@@ -1115,11 +1150,11 @@ def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.Da
     summary["Q1"] = grouped.quantile(0.25)
     summary["Q3"] = grouped.quantile(0.75)
     summary = summary.reset_index()
-    summary = summary.rename(columns={"Scenario_Count": "Scenario Count"})
+    summary = summary.rename(columns={"Scenario_Count": COLUMN_NAMES['scenario_count']})
     return summary[
         [
             *group_columns,
-            "Scenario Count",
+            COLUMN_NAMES['scenario_count'],
             "Min",
             "Q1",
             "Median",
@@ -1140,8 +1175,8 @@ def _write_relationship_boxplot_values_from_parquet(
     columns = [
         column
         for column in [
-            "Mix ID",
-            "Scenario ID",
+            COLUMN_NAMES['mix_id'],
+            COLUMN_NAMES['scenario_id'],
             NET_BENEFIT_RELATIONSHIP_COLUMN,
             BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
             *LONG_SCENARIO_VALUE_VARS,
@@ -1151,26 +1186,26 @@ def _write_relationship_boxplot_values_from_parquet(
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     grouped_values: dict[tuple[object, ...], list[float]] = {}
     group_columns = [
-        "Metric Family",
-        "Relationship Code",
-        "Relationship Description",
-        "Scenario Group",
-        "Scenario Variant",
-        "Scenario Type",
+        COLUMN_NAMES['metric_family'],
+        COLUMN_NAMES['relationship_code'],
+        COLUMN_NAMES['relationship_description'],
+        COLUMN_NAMES['scenario_group'],
+        COLUMN_NAMES['scenario_variant'],
+        COLUMN_NAMES['scenario_type'],
     ]
     for batch_df in _iter_parquet_batches(parquet_path, columns=columns, batch_size=batch_size):
         boxplot_df = _build_relationship_boxplot_dataframe(batch_df)
         if boxplot_df.empty:
             print("Processed boxplot batch with 0 rows")
             continue
-        grouped = boxplot_df.groupby(group_columns, dropna=False)["Value"]
+        grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
         for group_key, values in grouped:
             grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
         print(f"Accumulated {len(boxplot_df)} boxplot rows from current batch")
 
     if not grouped_values:
         empty_summary = _summarize_relationship_boxplot_dataframe(
-            pd.DataFrame(columns=[*group_columns, "Value"])
+            pd.DataFrame(columns=[*group_columns, COLUMN_NAMES['value']])
         )
         empty_summary.to_csv(output_csv_path, index=False)
         print(f"Wrote empty relationship boxplot summary to {output_csv_path}")
@@ -1181,13 +1216,13 @@ def _write_relationship_boxplot_values_from_parquet(
         value_series = pd.Series(values, dtype="float64")
         summary_rows.append(
             {
-                "Metric Family": group_key[0],
-                "Relationship Code": group_key[1],
-                "Relationship Description": group_key[2],
-                "Scenario Group": group_key[3],
-                "Scenario Variant": group_key[4],
-                "Scenario Type": group_key[5],
-                "Scenario Count": int(value_series.count()),
+                COLUMN_NAMES['metric_family']: group_key[0],
+                COLUMN_NAMES['relationship_code']: group_key[1],
+                COLUMN_NAMES['relationship_description']: group_key[2],
+                COLUMN_NAMES['scenario_group']: group_key[3],
+                COLUMN_NAMES['scenario_variant']: group_key[4],
+                COLUMN_NAMES['scenario_type']: group_key[5],
+                COLUMN_NAMES['scenario_count']: int(value_series.count()),
                 "Min": float(value_series.min()),
                 "Q1": float(value_series.quantile(0.25)),
                 "Median": float(value_series.median()),
@@ -1210,26 +1245,26 @@ def _parquet_file_columns(parquet_path: Path) -> list[str]:
 def _final_scenario_component_arrow_schema(pa):
     return pa.schema(
         [
-            ("Mix ID", pa.string()),
-            ("Scenario ID", pa.string()),
-            ("Mix Description", pa.string()),
-            ("Total Clusters in Mix", pa.int64()),
-            ("Total Tests", pa.int64()),
-            ("Total Component Chips", pa.int64()),
-            ("Scenario Component Count", pa.int64()),
-            ("K Combo", pa.string()),
-            ("N Combo", pa.string()),
-            ("Cluster Size (N)", pa.int64()),
-            ("Bad Records (K)", pa.int64()),
-            ("Total Bad Records", pa.int64()),
-            ("Number of Clusters", pa.int64()),
-            ("Tests (n)", pa.int64()),
-            ("Physical Inspection - P(Detect)", pa.float64()),
-            ("Physical Inspection - Diverted Chips Identified", pa.float64()),
-            ("PLV - P(Detect)", pa.float64()),
-            ("PLV - Diverted Chips Identified", pa.float64()),
-            ("Physical Inspection - Total Diverted Chips Identified", pa.float64()),
-            ("PLV - Total Diverted Chips Identified", pa.float64()),
+            (COLUMN_NAMES['mix_id'], pa.string()),
+            (COLUMN_NAMES['scenario_id'], pa.string()),
+            (COLUMN_NAMES['mix_description'], pa.string()),
+            (COLUMN_NAMES['total_clusters_in_mix'], pa.int64()),
+            (COLUMN_NAMES['total_tests'], pa.int64()),
+            (COLUMN_NAMES['total_component_chips'], pa.int64()),
+            (COLUMN_NAMES['scenario_component_count'], pa.int64()),
+            (COLUMN_NAMES['k_combo'], pa.string()),
+            (COLUMN_NAMES['n_combo'], pa.string()),
+            (COLUMN_NAMES['cluster_size'], pa.int64()),
+            (COLUMN_NAMES['bad_records'], pa.int64()),
+            (COLUMN_NAMES['total_bad_records'], pa.int64()),
+            (COLUMN_NAMES['number_of_clusters'], pa.int64()),
+            (COLUMN_NAMES['tests'], pa.int64()),
+            (COLUMN_NAMES['physical_inspection_p_detect'], pa.float64()),
+            (COLUMN_NAMES['physical_inspection_diverted_chips_identified'], pa.float64()),
+            (COLUMN_NAMES['plv_p_detect'], pa.float64()),
+            (COLUMN_NAMES['plv_diverted_chips_identified'], pa.float64()),
+            (COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'], pa.float64()),
+            (COLUMN_NAMES['plv_total_diverted_chips_identified'], pa.float64()),
         ]
     )
 
@@ -1237,26 +1272,26 @@ def _final_scenario_component_arrow_schema(pa):
 def _scenarios_arrow_schema(pa):
     return pa.schema(
         [
-            ("Mix ID", pa.string()),
-            ("Scenario ID", pa.string()),
-            ("Cluster Size (N)", pa.int64()),
-            ("Bad Records (K)", pa.int64()),
+            (COLUMN_NAMES['mix_id'], pa.string()),
+            (COLUMN_NAMES['scenario_id'], pa.string()),
+            (COLUMN_NAMES['cluster_size'], pa.int64()),
+            (COLUMN_NAMES['bad_records'], pa.int64()),
             ("Weight (%)", pa.float64()),
-            ("Number of Clusters", pa.int64()),
-            ("Mix Description", pa.string()),
-            ("Total Clusters in Mix", pa.int64()),
-            ("Total Tests", pa.int64()),
-            ("Total Component Chips", pa.int64()),
-            ("Total Bad Records", pa.int64()),
-            ("Tests (n)", pa.int64()),
-            ("Share Diverted", pa.float64()),
-            ("Chip-level Miss Prob (m)", pa.float64()),
-            ("Physical Inspection - P(Detect)", pa.float64()),
-            ("Physical Inspection - Diverted Chips Identified", pa.float64()),
-            ("PLV - P(Detect)", pa.float64()),
-            ("PLV - Diverted Chips Identified", pa.float64()),
-            ("Physical Inspection - Total Diverted Chips Identified", pa.float64()),
-            ("PLV - Total Diverted Chips Identified", pa.float64()),
+            (COLUMN_NAMES['number_of_clusters'], pa.int64()),
+            (COLUMN_NAMES['mix_description'], pa.string()),
+            (COLUMN_NAMES['total_clusters_in_mix'], pa.int64()),
+            (COLUMN_NAMES['total_tests'], pa.int64()),
+            (COLUMN_NAMES['total_component_chips'], pa.int64()),
+            (COLUMN_NAMES['total_bad_records'], pa.int64()),
+            (COLUMN_NAMES['tests'], pa.int64()),
+            (COLUMN_NAMES['share_diverted'], pa.float64()),
+            (COLUMN_NAMES['chip_level_miss_prob'], pa.float64()),
+            (COLUMN_NAMES['physical_inspection_p_detect'], pa.float64()),
+            (COLUMN_NAMES['physical_inspection_diverted_chips_identified'], pa.float64()),
+            (COLUMN_NAMES['plv_p_detect'], pa.float64()),
+            (COLUMN_NAMES['plv_diverted_chips_identified'], pa.float64()),
+            (COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'], pa.float64()),
+            (COLUMN_NAMES['plv_total_diverted_chips_identified'], pa.float64()),
         ]
     )
 
@@ -1268,50 +1303,50 @@ def add_cost_benefit_columns(
     plv_basis_column: str = PLV_BASIS_COLUMN,
 ) -> pd.DataFrame:
     result = summary_df.copy()
-    if "Total Component Chips" in result.columns:
-        result["Share Diverted"] = result["Bad Records (K)"] / result["Total Component Chips"]
+    if COLUMN_NAMES['total_component_chips'] in result.columns:
+        result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['total_component_chips']]
     else:
-        result["Share Diverted"] = result["Bad Records (K)"] / result["Cluster Size (N)"]
-    plv_cost_basis = result[plv_basis_column] if plv_basis_column in result.columns else result["Total Clusters in Mix"]
+        result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['cluster_size']]
+    plv_cost_basis = result[plv_basis_column] if plv_basis_column in result.columns else result[COLUMN_NAMES['total_clusters_in_mix']]
 
     result["Physical Inspection - Min Total Cost"] = (
-        result["Total Clusters in Mix"] * phys_inspection_travel_cost_per_inspection[0]
-        + result["Total Tests"] * phys_inspection_salary_cost_per_tested_chip[0]
+        result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[0]
+        + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[0]
     )
     result["Physical Inspection - Max Total Cost"] = (
-        result["Total Clusters in Mix"] * phys_inspection_travel_cost_per_inspection[1]
-        + result["Total Tests"] * phys_inspection_salary_cost_per_tested_chip[1]
+        result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[1]
+        + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[1]
     )
     result["Physical - Min Net Benefit"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[0]
+        result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[0]
         - result["Physical Inspection - Max Total Cost"]
     )
     result["Physical - Max Net Benefit"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[1]
+        result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[1]
         - result["Physical Inspection - Min Total Cost"]
     )
     result["Physical - Min Benefit Per Dollar"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"] / result["Physical Inspection - Max Total Cost"]
+        result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] / result["Physical Inspection - Max Total Cost"]
     )
     result["Physical - Max Benefit Per Dollar"] = (
-        result["Physical Inspection - Total Diverted Chips Identified"] / result["Physical Inspection - Min Total Cost"]
+        result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] / result["Physical Inspection - Min Total Cost"]
     )
 
     result["PLV - Min Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[0]
     result["PLV - Max Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[1]
     result["PLV - Min Net Benefit"] = (
-        result["PLV - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[0]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[0]
         - result["PLV - Max Total Cost"]
     )
     result["PLV - Max Net Benefit"] = (
-        result["PLV - Total Diverted Chips Identified"] * DOLLARS_PER_CHIP_DETECTED[1]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[1]
         - result["PLV - Min Total Cost"]
     )
     result["PLV - Min Benefit Per Dollar"] = (
-        result["PLV - Total Diverted Chips Identified"] / result["PLV - Max Total Cost"]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] / result["PLV - Max Total Cost"]
     )
     result["PLV - Max Benefit Per Dollar"] = (
-        result["PLV - Total Diverted Chips Identified"] / result["PLV - Min Total Cost"]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] / result["PLV - Min Total Cost"]
     )
     result[NET_BENEFIT_RELATIONSHIP_COLUMN] = _classify_net_benefit_relationship(result)
     result[BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN] = _classify_benefit_per_dollar_relationship(result)
