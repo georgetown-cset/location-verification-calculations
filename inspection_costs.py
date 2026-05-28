@@ -26,8 +26,6 @@ PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
 PLV_COST_PER_TOTAL_CHIP = (272211/TARGET_CHIPS, 76944362/TARGET_CHIPS)
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
-NET_BENEFIT_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
-BENEFIT_PER_DOLLAR_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
 K_VALS = [1, 10, 100, 1000, 10000, 100000, 200000]
 N_VALS = [1, 10, 100, 1000]
@@ -784,16 +782,6 @@ def _import_pyarrow_parquet():
     return pq, pa
 
 
-def _parquet_file_has_columns(parquet_path: Path, expected_columns: Iterable[str]) -> bool:
-    pq, _pa = _import_pyarrow_parquet()
-    try:
-        parquet_file = pq.ParquetFile(parquet_path)
-    except Exception:
-        return False
-    schema_names = set(parquet_file.schema.names)
-    return all(column in schema_names for column in expected_columns)
-
-
 def _iter_parquet_batches(
     parquet_path: Path,
     columns: Iterable[str],
@@ -1267,32 +1255,6 @@ def _final_scenario_component_arrow_schema(pa):
         ]
     )
 
-
-def _scenarios_arrow_schema(pa):
-    return pa.schema(
-        [
-            (COLUMN_NAMES['mix_id'], pa.string()),
-            (COLUMN_NAMES['scenario_id'], pa.string()),
-            (COLUMN_NAMES['cluster_size'], pa.int64()),
-            (COLUMN_NAMES['bad_records'], pa.int64()),
-            ("Weight (%)", pa.float64()),
-            (COLUMN_NAMES['number_of_clusters'], pa.int64()),
-            (COLUMN_NAMES['mix_description'], pa.string()),
-            (COLUMN_NAMES['total_clusters_in_mix'], pa.int64()),
-            (COLUMN_NAMES['total_tests'], pa.int64()),
-            (COLUMN_NAMES['total_component_chips'], pa.int64()),
-            (COLUMN_NAMES['total_bad_records'], pa.int64()),
-            (COLUMN_NAMES['tests'], pa.int64()),
-            (COLUMN_NAMES['share_diverted'], pa.float64()),
-            (COLUMN_NAMES['chip_level_miss_prob'], pa.float64()),
-            (COLUMN_NAMES['physical_inspection_p_detect'], pa.float64()),
-            (COLUMN_NAMES['physical_inspection_diverted_chips_identified'], pa.float64()),
-            (COLUMN_NAMES['plv_p_detect'], pa.float64()),
-            (COLUMN_NAMES['plv_diverted_chips_identified'], pa.float64()),
-            (COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'], pa.float64()),
-            (COLUMN_NAMES['plv_total_diverted_chips_identified'], pa.float64()),
-        ]
-    )
 
 def add_cost_benefit_columns(
     summary_df: pd.DataFrame,
