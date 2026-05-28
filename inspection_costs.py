@@ -26,7 +26,6 @@ PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
 PLV_COST_PER_TOTAL_CHIP = (272211/TARGET_CHIPS, 76944362/TARGET_CHIPS)
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
-PLV_BASIS_COLUMN = "Cluster Size (N)"
 NET_BENEFIT_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
 BENEFIT_PER_DOLLAR_FEATURE_COLUMNS = ("Total Clusters in Mix", "Tests (n)", "Share Diverted", "Total Expected Value")
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
@@ -1300,14 +1299,12 @@ def add_cost_benefit_columns(
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
     phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
-    plv_basis_column: str = PLV_BASIS_COLUMN,
 ) -> pd.DataFrame:
     result = summary_df.copy()
     if COLUMN_NAMES['total_component_chips'] in result.columns:
         result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['total_component_chips']]
     else:
         result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['cluster_size']]
-    plv_cost_basis = result[plv_basis_column] if plv_basis_column in result.columns else result[COLUMN_NAMES['total_clusters_in_mix']]
 
     result["Physical Inspection - Min Total Cost"] = (
         result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[0]
@@ -1332,8 +1329,8 @@ def add_cost_benefit_columns(
         result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] / result["Physical Inspection - Min Total Cost"]
     )
 
-    result["PLV - Min Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[0]
-    result["PLV - Max Total Cost"] = plv_cost_basis * plv_cost_per_total_chip[1]
+    result["PLV - Min Total Cost"] = TARGET_CHIPS * plv_cost_per_total_chip[0]
+    result["PLV - Max Total Cost"] = TARGET_CHIPS * plv_cost_per_total_chip[1]
     result["PLV - Min Net Benefit"] = (
         result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[0]
         - result["PLV - Max Total Cost"]
