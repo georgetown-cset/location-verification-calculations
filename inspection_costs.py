@@ -14,6 +14,7 @@ import pandas as pd
 TARGET_CHIPS = 2_000_000
 OUTPUT_DIR = "output"
 DATA_SAVED_DIR = "data/saved"
+PARQUET_COMPRESSION = "zstd"
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = f"{DATA_SAVED_DIR}/detection_lookup_table.parquet"
 SCENARIOS_PARQUET_PATH = "data/scenario_components"
 SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
@@ -140,7 +141,7 @@ def build_detection_lookup_table(
     if parquet_path is not None:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"build_detection_lookup_table: writing table to {parquet_path}")
-        result.to_parquet(parquet_path, index=False)
+        result.to_parquet(parquet_path, index=False, compression=PARQUET_COMPRESSION)
     return result
 
 
@@ -573,12 +574,12 @@ def _write_scenario_dataset_to_parquet(
     _clear_existing_mix_files(mix_parquet_path)
     if not records:
         table = _empty_arrow_table(pa, _final_scenario_component_arrow_schema(pa))
-        pq.write_table(table, mix_parquet_path)
+        pq.write_table(table, mix_parquet_path, compression=PARQUET_COMPRESSION)
         return [mix_parquet_path]
 
     schema = _final_scenario_component_arrow_schema(pa)
     table = _records_to_arrow_table(records, pa, schema)
-    pq.write_table(table, mix_parquet_path)
+    pq.write_table(table, mix_parquet_path, compression=PARQUET_COMPRESSION)
     return [mix_parquet_path]
 
 
@@ -1384,7 +1385,11 @@ def run_inspection_costs_workflow(
 
             scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
             print(f"Saving scenario-component rows to {scenarios_combined_path}")
-            scenario_component_df.to_parquet(scenarios_combined_path, index=False)
+            scenario_component_df.to_parquet(
+                scenarios_combined_path,
+                index=False,
+                compression=PARQUET_COMPRESSION,
+            )
         else:
             print(f"Loading cached scenario-component rows from {scenarios_combined_path}")
             scenario_component_df = pd.read_parquet(scenarios_combined_path)
@@ -1404,7 +1409,7 @@ def run_inspection_costs_workflow(
         )
         scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"Saving final scenarios to {scenarios_costed_path}")
-        final_df.to_parquet(scenarios_costed_path, index=False)
+        final_df.to_parquet(scenarios_costed_path, index=False, compression=PARQUET_COMPRESSION)
 
         relationship_summary_df = _summarize_relationships(final_df)
         relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
