@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 
-TARGET_CHIPS = 2_000_000
+TARGET_CHIPS = 3_000_000
 OUTPUT_DIR = "output"
 DATA_SAVED_DIR = "data/saved"
 PARQUET_COMPRESSION = "zstd"
@@ -27,8 +27,8 @@ PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
 PLV_COST_PER_TOTAL_CHIP = (272211/TARGET_CHIPS, 76944362/TARGET_CHIPS)
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
-CLUSTER_SIZES = [10, 100, 1000, 10000, 100000, 200000]
-K_VALS = [0, 1, 10, 100, 1000, 10000, 100000, 200000]
+CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]
+K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]
 N_VALS = [1, 10, 100, 1000]
 M_VALS = [0.05]
 COLUMN_NAMES = {
@@ -654,7 +654,7 @@ def _build_mix_records(
         )
         for component in mix_components
     ]
-    k_options_per_component = [component[3] for component in component_data]
+    k_options_per_component = [component[4] for component in component_data]
     scenario_counter = 0
 
     for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
