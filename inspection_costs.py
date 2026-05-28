@@ -485,6 +485,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
                 COLUMN_NAMES['total_tests'],
                 COLUMN_NAMES['total_component_chips'],
                 COLUMN_NAMES['bad_records'],
+                COLUMN_NAMES['number_of_clusters_with_smuggling'],
             ]
         )
 
@@ -500,6 +501,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['total_component_chips'],
             COLUMN_NAMES['total_bad_records'],
             COLUMN_NAMES['number_of_clusters'],
+            COLUMN_NAMES['number_of_clusters_with_smuggling'],
             COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
             COLUMN_NAMES['plv_total_diverted_chips_identified'],
         ],
@@ -522,6 +524,10 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         Total_Tests=(COLUMN_NAMES['total_tests'], "sum"),
         Total_Component_Chips=(COLUMN_NAMES['total_component_chips'], "sum"),
         Bad_Records=(COLUMN_NAMES['total_bad_records'], "sum"),
+        Number_of_Clusters_with_Smuggling=(
+            COLUMN_NAMES['number_of_clusters_with_smuggling'],
+            "sum",
+        ),
         Physical_Inspection_Total_Diverted_Chips_Identified=(
             COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
             "sum",
@@ -539,6 +545,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "Total_Tests": COLUMN_NAMES['total_tests'],
             "Total_Component_Chips": COLUMN_NAMES['total_component_chips'],
             "Bad_Records": COLUMN_NAMES['bad_records'],
+            "Number_of_Clusters_with_Smuggling": COLUMN_NAMES['number_of_clusters_with_smuggling'],
             "Physical_Inspection_Total_Diverted_Chips_Identified": COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
             "PLV_Total_Diverted_Chips_Identified": COLUMN_NAMES['plv_total_diverted_chips_identified'],
         }
@@ -555,6 +562,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['total_tests'],
             COLUMN_NAMES['total_component_chips'],
             COLUMN_NAMES['bad_records'],
+            COLUMN_NAMES['number_of_clusters_with_smuggling'],
             COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
             COLUMN_NAMES['plv_total_diverted_chips_identified'],
         ]
