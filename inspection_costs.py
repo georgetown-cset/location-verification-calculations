@@ -26,7 +26,9 @@ MIX_STEPS = np.arange(0, 1.2, 0.2)
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
 N_VALS = [1, 10, 100, 1000] # Number of tests conducted on a cluster
-M_VALS = [0.05] # Probability that a diverted chip is not detected by a test (i.e., the "miss" probability)
+PHYSICAL_INSPECTION_M_VALS = [0.05] # Probability that a diverted chip is not detected by a physical inspection test (i.e., the "miss" probability)
+PLV_M_VALS = [0.05] # Probability that a diverted chip is not detected by a PLV test (i.e., the "miss" probability)
+ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
 
 OUTPUT_DIR = "output"
 DATA_SAVED_DIR = "data/saved"
@@ -57,6 +59,8 @@ COLUMN_NAMES = {
     "tests": "Tests (n)",
     "share_diverted": "Share Diverted",
     "chip_level_miss_prob": "Chip-level Miss Prob (m)",
+    "physical_inspection_chip_level_miss_prob": "Physical Inspection - Chip-level Miss Prob (m)",
+    "plv_chip_level_miss_prob": "PLV - Chip-level Miss Prob (m)",
     "physical_inspection_p_detect": "Physical Inspection - P(Detect)",
     "physical_inspection_diverted_chips_identified": "Physical Inspection - Diverted Chips Identified",
     "plv_p_detect": "PLV - P(Detect)",
@@ -92,8 +96,10 @@ SCENARIO_COLUMNS = [
     COLUMN_NAMES['number_of_clusters'],
     COLUMN_NAMES['number_of_clusters_with_smuggling'],
     COLUMN_NAMES['tests'],
+    COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
     COLUMN_NAMES['physical_inspection_p_detect'],
     COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
+    COLUMN_NAMES['plv_chip_level_miss_prob'],
     COLUMN_NAMES['plv_p_detect'],
     COLUMN_NAMES['plv_diverted_chips_identified'],
     COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
@@ -170,7 +176,7 @@ def build_detection_lookup_table(
     cluster_sizes: Iterable[int],
     K_vals: Iterable[int],
     n_vals: Iterable[int],
-    m_vals: Iterable[float],
+    m_vals: Iterable[float] = ALL_M_VALS,
     parquet_path: Optional[str | Path] = DETECTION_LOOKUP_TABLE_PARQUET_PATH,
 ) -> pd.DataFrame:
     if parquet_path is not None:
@@ -348,8 +354,8 @@ def _number_of_clusters_with_smuggling(number_of_clusters: int) -> int:
     return max(1, int(math.floor(number_of_clusters * SHARE_OF_CLUSTERS_WITH_SMUGGLING + 0.5)))
 
 
-def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]]:
-    grouped: dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]] = {}
+def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]]:
+    grouped: dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]] = {}
     columns = [
         COLUMN_NAMES['cluster_size'],
         COLUMN_NAMES['bad_records'],
@@ -362,14 +368,11 @@ def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[
     ]
     for row in detection_lookup_table.loc[:, columns].itertuples(index=False, name=None):
         N, K, n, m, physical_p_detect, physical_identified, plv_p_detect, plv_identified = row
-        grouped.setdefault((int(N), int(K)), {}).setdefault(int(n), []).append(
-            (
-                float(m),
-                float(physical_p_detect),
-                float(physical_identified),
-                float(plv_p_detect),
-                float(plv_identified),
-            )
+        grouped.setdefault((int(N), int(K)), {}).setdefault(int(n), {})[float(m)] = (
+            float(physical_p_detect),
+            float(physical_identified),
+            float(plv_p_detect),
+            float(plv_identified),
         )
     return grouped
 
@@ -378,6 +381,8 @@ def build_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
+    physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
+    plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
     output_parquet_path: Optional[str | Path] = SCENARIOS_PARQUET_PATH,
@@ -385,6 +390,8 @@ def build_scenarios(
 ) -> pd.DataFrame:
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
+    physical_m_vals = list(physical_m_vals)
+    plv_m_vals = list(plv_m_vals)
     print(f"build_scenarios: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
     mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
     print(f"build_scenarios: received {len(mix_data)} mixes from build_mix_data")
@@ -421,6 +428,8 @@ def build_scenarios(
                     mix_components=mix_components,
                     detection_grouped=detection_grouped,
                     k_options_by_cluster_size=k_options_by_cluster_size,
+                    physical_m_vals=physical_m_vals,
+                    plv_m_vals=plv_m_vals,
                     target_chips=target_chips,
                 )
                 mix_component_fragments = _write_scenario_dataset_to_parquet(
@@ -457,6 +466,8 @@ def build_scenarios(
             mix_components=mix_components,
             detection_grouped=detection_grouped,
             k_options_by_cluster_size=k_options_by_cluster_size,
+            physical_m_vals=physical_m_vals,
+            plv_m_vals=plv_m_vals,
             target_chips=target_chips,
         )
         if return_dataframe:
@@ -598,8 +609,10 @@ def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
         COLUMN_NAMES['number_of_clusters'],
         COLUMN_NAMES['number_of_clusters_with_smuggling'],
         COLUMN_NAMES['tests'],
+        COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
         COLUMN_NAMES['physical_inspection_p_detect'],
         COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
+        COLUMN_NAMES['plv_chip_level_miss_prob'],
         COLUMN_NAMES['plv_p_detect'],
         COLUMN_NAMES['plv_diverted_chips_identified'],
         COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
@@ -644,8 +657,10 @@ def _write_scenario_dataset_to_parquet(
 def _build_mix_records(
     *,
     mix_components: list[dict[str, int]],
-    detection_grouped: dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]],
+    detection_grouped: dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]],
     k_options_by_cluster_size: dict[int, list[int]],
+    physical_m_vals: Iterable[float],
+    plv_m_vals: Iterable[float],
     target_chips: int,
     emit_scenario: Optional[callable] = None,
     skip_scenarios: int = 0,
@@ -655,6 +670,8 @@ def _build_mix_records(
     mix_description = build_mix_description(mix_components)
     total_clusters_in_mix = sum(component[COLUMN_NAMES['number_of_clusters']] for component in mix_components)
     scenario_component_count = len(mix_components)
+    physical_m_vals = list(physical_m_vals)
+    plv_m_vals = list(plv_m_vals)
     print(
         f"build_scenarios: processing {mix_id} ({mix_description}) "
         f"with {len(mix_components)} components and {total_clusters_in_mix} total clusters"
@@ -682,64 +699,71 @@ def _build_mix_records(
             n_options_per_component.append(tuple(sorted(n_options)))
         else:
             for n_combo_count, n_combo in enumerate(itertools.product(*n_options_per_component), start=1):
-                scenario_counter += 1
-                if scenario_counter <= skip_scenarios:
-                    continue
-                scenario_id = f"{mix_id}_K{'-'.join(map(str, k_combo))}_n{'-'.join(map(str, n_combo))}"
-                flat_rows: list[tuple[object, ...]] = []
-                for (N_comp, num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
-                    detection_info_list = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), [])
-
-                    for (
-                        _m_val,
-                        physical_p_detect,
-                        physical_identified_per_cluster,
-                        plv_p_detect,
-                        plv_identified_per_cluster,
-                    ) in detection_info_list:
-                        flat_rows.append(
-                            (
-                                mix_id,
-                                scenario_id,
-                                mix_description,
-                                total_clusters_in_mix,
-                                num_clusters_comp * n_val,
-                                num_clusters_comp * N_comp,
-                                scenario_component_count,
-                                "-".join(map(str, k_combo)),
-                                "-".join(map(str, n_combo)),
-                                N_comp,
-                                k_val,
-                                k_val * num_clusters_with_smuggling,
-                                num_clusters_comp,
-                                num_clusters_with_smuggling,
-                                n_val,
-                                physical_p_detect,
-                                physical_identified_per_cluster,
-                                plv_p_detect,
-                                plv_identified_per_cluster,
-                                physical_identified_per_cluster * num_clusters_with_smuggling,
-                                plv_identified_per_cluster * num_clusters_with_smuggling,
-                            )
+                for physical_m_val in physical_m_vals:
+                    for plv_m_val in plv_m_vals:
+                        scenario_counter += 1
+                        if scenario_counter <= skip_scenarios:
+                            continue
+                        scenario_id = (
+                            f"{mix_id}_K{'-'.join(map(str, k_combo))}_n{'-'.join(map(str, n_combo))}"
+                            f"_pm{physical_m_val}_plvm{plv_m_val}"
                         )
+                        flat_rows: list[tuple[object, ...]] = []
+                        for (N_comp, num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
+                            detection_info_by_m = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), {})
+                            physical_info = detection_info_by_m.get(float(physical_m_val))
+                            if physical_info is None:
+                                continue
+                            plv_info = detection_info_by_m.get(float(plv_m_val))
+                            if plv_info is None:
+                                continue
+                            physical_p_detect, physical_identified_per_cluster, _, _ = physical_info
+                            _, _, plv_p_detect, plv_identified_per_cluster = plv_info
+                            flat_rows.append(
+                                (
+                                    mix_id,
+                                    scenario_id,
+                                    mix_description,
+                                    total_clusters_in_mix,
+                                    num_clusters_comp * n_val,
+                                    num_clusters_comp * N_comp,
+                                    scenario_component_count,
+                                    "-".join(map(str, k_combo)),
+                                    "-".join(map(str, n_combo)),
+                                    N_comp,
+                                    k_val,
+                                    k_val * num_clusters_with_smuggling,
+                                    num_clusters_comp,
+                                    num_clusters_with_smuggling,
+                                    n_val,
+                                    physical_m_val,
+                                    physical_p_detect,
+                                    physical_identified_per_cluster,
+                                    plv_m_val,
+                                    plv_p_detect,
+                                    plv_identified_per_cluster,
+                                    physical_identified_per_cluster * num_clusters_with_smuggling,
+                                    plv_identified_per_cluster * num_clusters_with_smuggling,
+                                )
+                            )
 
-                if emit_scenario is not None:
-                    emit_scenario(
-                        (
-                            mix_id,
-                            scenario_id,
-                            mix_description,
-                            total_clusters_in_mix,
-                            num_clusters_comp * n_val,
-                            num_clusters_comp * N_comp,
-                            scenario_component_count,
-                            "-".join(map(str, k_combo)),
-                            "-".join(map(str, n_combo)),
-                        ),
-                        flat_rows,
-                    )
-                else:
-                    scenario_component_records.extend(flat_rows)
+                        if emit_scenario is not None:
+                            emit_scenario(
+                                (
+                                    mix_id,
+                                    scenario_id,
+                                    mix_description,
+                                    total_clusters_in_mix,
+                                    num_clusters_comp * n_val,
+                                    num_clusters_comp * N_comp,
+                                    scenario_component_count,
+                                    "-".join(map(str, k_combo)),
+                                    "-".join(map(str, n_combo)),
+                                ),
+                                flat_rows,
+                            )
+                        else:
+                            scenario_component_records.extend(flat_rows)
 
                 if n_combo_count % 1000 == 0:
                     print(
@@ -1585,8 +1609,10 @@ def _final_scenario_component_arrow_schema(pa):
             (COLUMN_NAMES['number_of_clusters'], pa.int64()),
             (COLUMN_NAMES['number_of_clusters_with_smuggling'], pa.int64()),
             (COLUMN_NAMES['tests'], pa.int64()),
+            (COLUMN_NAMES['physical_inspection_chip_level_miss_prob'], pa.float64()),
             (COLUMN_NAMES['physical_inspection_p_detect'], pa.float64()),
             (COLUMN_NAMES['physical_inspection_diverted_chips_identified'], pa.float64()),
+            (COLUMN_NAMES['plv_chip_level_miss_prob'], pa.float64()),
             (COLUMN_NAMES['plv_p_detect'], pa.float64()),
             (COLUMN_NAMES['plv_diverted_chips_identified'], pa.float64()),
             (COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'], pa.float64()),
@@ -1656,7 +1682,8 @@ def run_inspection_costs_workflow(
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
     k_vals: Iterable[int] = K_VALS,
     n_vals: Iterable[int] = N_VALS,
-    m_vals: Iterable[float] = M_VALS,
+    physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
+    plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = MIX_STEPS,
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
@@ -1666,7 +1693,8 @@ def run_inspection_costs_workflow(
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
     n_vals = list(n_vals)
-    m_vals = list(m_vals)
+    physical_m_vals = list(physical_m_vals)
+    plv_m_vals = list(plv_m_vals)
     steps = list(steps) if steps is not None else None
     scenarios_combined_path = Path(SCENARIOS_COMBINED_PARQUET_PATH)
     scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
@@ -1707,7 +1735,7 @@ def run_inspection_costs_workflow(
                 cluster_sizes=cluster_sizes,
                 K_vals=k_vals,
                 n_vals=n_vals,
-                m_vals=m_vals,
+                m_vals=ALL_M_VALS,
             )
             print(f"Detection lookup table rows: {len(detection_lookup_table)}")
 
@@ -1716,6 +1744,8 @@ def run_inspection_costs_workflow(
                 cluster_sizes=cluster_sizes,
                 detection_lookup_table=detection_lookup_table,
                 k_vals=k_vals,
+                physical_m_vals=physical_m_vals,
+                plv_m_vals=plv_m_vals,
                 target_chips=target_chips,
                 steps=steps,
                 return_dataframe=True,
