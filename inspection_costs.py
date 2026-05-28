@@ -333,6 +333,7 @@ def build_scenarios(
         "N Combo",
         "Cluster Size (N)",
         "Bad Records (K)",
+        "Total Bad Records",
         "Number of Clusters",
         "Tests (n)",
         "Physical Inspection - P(Detect)",
@@ -439,19 +440,31 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
                 "Scenario Component Count",
                 "K Combo",
                 "N Combo",
+                "Total Tests",
+                "Total Component Chips",
+                "Bad Records (K)",
             ]
         )
 
     summary_source = scenario_component_df.loc[
-        :, ["Scenario ID", "Mix ID", "K Combo", "N Combo", "Cluster Size (N)", "Number of Clusters"]
+        :,
+        [
+            "Scenario ID",
+            "Mix ID",
+            "Mix Description",
+            "K Combo",
+            "N Combo",
+            "Cluster Size (N)",
+            "Bad Records (K)",
+            "Total Bad Records",
+            "Number of Clusters",
+            "Tests (n)",
+            "Physical Inspection - Total Diverted Chips Identified",
+            "PLV - Total Diverted Chips Identified",
+        ],
     ].copy()
-    summary_source.sort_values(["Scenario ID", "Cluster Size (N)"], inplace=True)
-    summary_source["_component_label"] = (
-        summary_source["Number of Clusters"].astype(str)
-        + "x(N="
-        + summary_source["Cluster Size (N)"].astype(str)
-        + ")"
-    )
+    summary_source["Total Tests"] = summary_source["Tests (n)"] * summary_source["Number of Clusters"]
+    summary_source["Total Component Chips"] = summary_source["Cluster Size (N)"] * summary_source["Number of Clusters"]
 
     grouped = summary_source.groupby("Scenario ID", sort=False, observed=True)
     total_scenarios = grouped.ngroups
@@ -462,11 +475,19 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
 
     scenario_summary = grouped.agg(
         Mix_ID=("Mix ID", "first"),
-        Mix_Description=("_component_label", " + ".join),
+        Mix_Description=("Mix Description", "first"),
         Total_Clusters_in_Mix=("Number of Clusters", "sum"),
         Scenario_Component_Count=("Number of Clusters", "size"),
         K_Combo=("K Combo", "first"),
         N_Combo=("N Combo", "first"),
+        Total_Tests=("Total Tests", "sum"),
+        Total_Component_Chips=("Total Component Chips", "sum"),
+        Bad_Records=("Total Bad Records", "sum"),
+        Physical_Inspection_Total_Diverted_Chips_Identified=(
+            "Physical Inspection - Total Diverted Chips Identified",
+            "sum",
+        ),
+        PLV_Total_Diverted_Chips_Identified=("PLV - Total Diverted Chips Identified", "sum"),
     ).reset_index()
     scenario_summary = scenario_summary.rename(
         columns={
@@ -476,6 +497,11 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "Scenario_Component_Count": "Scenario Component Count",
             "K_Combo": "K Combo",
             "N_Combo": "N Combo",
+            "Total_Tests": "Total Tests",
+            "Total_Component_Chips": "Total Component Chips",
+            "Bad_Records": "Bad Records (K)",
+            "Physical_Inspection_Total_Diverted_Chips_Identified": "Physical Inspection - Total Diverted Chips Identified",
+            "PLV_Total_Diverted_Chips_Identified": "PLV - Total Diverted Chips Identified",
         }
     )
     scenario_summary = scenario_summary[
@@ -487,6 +513,11 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "Scenario Component Count",
             "K Combo",
             "N Combo",
+            "Total Tests",
+            "Total Component Chips",
+            "Bad Records (K)",
+            "Physical Inspection - Total Diverted Chips Identified",
+            "PLV - Total Diverted Chips Identified",
         ]
     ]
 
@@ -622,6 +653,7 @@ def _build_mix_records(
                                 "-".join(map(str, n_combo)),
                                 N_comp,
                                 k_val,
+                                k_val * num_clusters_comp,
                                 num_clusters_comp,
                                 n_val,
                                 physical_p_detect,
@@ -640,6 +672,8 @@ def _build_mix_records(
                             scenario_id,
                             mix_description,
                             total_clusters_in_mix,
+                            num_clusters_comp * n_val,
+                            num_clusters_comp * N_comp,
                             scenario_component_count,
                             "-".join(map(str, k_combo)),
                             "-".join(map(str, n_combo)),
@@ -1189,6 +1223,7 @@ def _final_scenario_component_arrow_schema(pa):
             ("N Combo", pa.string()),
             ("Cluster Size (N)", pa.int64()),
             ("Bad Records (K)", pa.int64()),
+            ("Total Bad Records", pa.int64()),
             ("Number of Clusters", pa.int64()),
             ("Tests (n)", pa.int64()),
             ("Physical Inspection - P(Detect)", pa.float64()),
@@ -1214,6 +1249,7 @@ def _scenarios_arrow_schema(pa):
             ("Total Clusters in Mix", pa.int64()),
             ("Total Tests", pa.int64()),
             ("Total Component Chips", pa.int64()),
+            ("Total Bad Records", pa.int64()),
             ("Tests (n)", pa.int64()),
             ("Share Diverted", pa.float64()),
             ("Chip-level Miss Prob (m)", pa.float64()),
@@ -1234,15 +1270,18 @@ def add_cost_benefit_columns(
     plv_basis_column: str = PLV_BASIS_COLUMN,
 ) -> pd.DataFrame:
     result = summary_df.copy()
-    result["Share Diverted"] = result["Bad Records (K)"] / result["Cluster Size (N)"]
+    if "Total Component Chips" in result.columns:
+        result["Share Diverted"] = result["Bad Records (K)"] / result["Total Component Chips"]
+    else:
+        result["Share Diverted"] = result["Bad Records (K)"] / result["Cluster Size (N)"]
     plv_cost_basis = result[plv_basis_column] if plv_basis_column in result.columns else result["Total Clusters in Mix"]
 
     result["Physical Inspection - Min Total Cost"] = (
-        result["Number of Clusters"] * phys_inspection_travel_cost_per_inspection[0]
+        result["Total Clusters in Mix"] * phys_inspection_travel_cost_per_inspection[0]
         + result["Total Tests"] * phys_inspection_salary_cost_per_tested_chip[0]
     )
     result["Physical Inspection - Max Total Cost"] = (
-        result["Number of Clusters"] * phys_inspection_travel_cost_per_inspection[1]
+        result["Total Clusters in Mix"] * phys_inspection_travel_cost_per_inspection[1]
         + result["Total Tests"] * phys_inspection_salary_cost_per_tested_chip[1]
     )
     result["Physical - Min Net Benefit"] = (
@@ -1355,9 +1394,13 @@ def run_inspection_costs_workflow(
 
         if scenario_component_df is None:
             raise ValueError("scenario_component_df is required when costed scenarios are not cached")
+        print("Aggregating scenario-component rows to scenario level")
+        scenario_df = _derive_scenario_summary_from_components(scenario_component_df)
+        print(f"Scenario rows: {len(scenario_df)}")
+        print(scenario_df.head())
         print("Adding cost and benefit columns")
         final_df = add_cost_benefit_columns(
-            scenario_component_df,
+            scenario_df,
             phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
             phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
             plv_cost_per_total_chip=plv_cost_per_total_chip,
