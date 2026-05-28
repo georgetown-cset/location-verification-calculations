@@ -13,6 +13,7 @@ import pandas as pd
 
 TARGET_CHIPS = 3_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
 SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25 # Share of clusters in a scenario component that are assumed to contain smuggling. This imposes an upper bound on the number of clusters with smuggling in a scenario component.
+NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
@@ -1603,12 +1604,12 @@ def add_cost_benefit_columns(
         result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['cluster_size']]
 
     result["Physical Inspection - Min Total Cost"] = (
-        result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[0]
-        + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[0]
+        (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[0]
+        + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[0])*NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR
     )
     result["Physical Inspection - Max Total Cost"] = (
-        result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[1]
-        + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[1]
+        (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[1]
+        + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[1])*NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR
     )
     result["Physical - Min Net Benefit"] = (
         result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[0]
