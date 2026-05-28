@@ -11,7 +11,18 @@ import numpy as np
 import pandas as pd
 
 
-TARGET_CHIPS = 3_000_000
+TARGET_CHIPS = 3_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
+SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25 # Share of clusters in a scenario component that are assumed to contain smuggling. This imposes an upper bound on the number of clusters with smuggling in a scenario component.
+MIX_STEPS = np.arange(0, 1.2, 0.2)
+PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
+PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
+PLV_COST_PER_TOTAL_CHIP = (272211/TARGET_CHIPS, 76944362/TARGET_CHIPS)
+DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of detecting a diverted chip, which is used to convert net benefit estimates from chip counts to dollars
+CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
+K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
+N_VALS = [1, 10, 100, 1000] # Number of tests conducted on a cluster
+M_VALS = [0.05] # Probability that a diverted chip is not detected by a test (i.e., the "miss" probability)
+
 OUTPUT_DIR = "output"
 DATA_SAVED_DIR = "data/saved"
 PARQUET_COMPRESSION = "zstd"
@@ -22,15 +33,7 @@ SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
 RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{OUTPUT_DIR}/relationship_boxplot_values.csv"
 RELATIONSHIP_MODEL_TEXT_PATH = f"{OUTPUT_DIR}/relationship_code_model.txt"
-MIX_STEPS = np.arange(0, 1.2, 0.2)
-PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
-PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
-PLV_COST_PER_TOTAL_CHIP = (272211/TARGET_CHIPS, 76944362/TARGET_CHIPS)
-DOLLARS_PER_CHIP_DETECTED = (1000, 60000)
-CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]
-K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]
-N_VALS = [1, 10, 100, 1000]
-M_VALS = [0.05]
+
 COLUMN_NAMES = {
     "mix_id": "Mix ID",
     "scenario_id": "Scenario ID",
@@ -337,7 +340,7 @@ def build_mix_id(mix_components: list[dict[str, int]]) -> str:
 def _number_of_clusters_with_smuggling(number_of_clusters: int) -> int:
     if number_of_clusters <= 1:
         return int(number_of_clusters)
-    return max(1, int(math.floor(number_of_clusters * 0.1 + 0.5)))
+    return max(1, int(math.floor(number_of_clusters * SHARE_OF_CLUSTERS_WITH_SMUGGLING + 0.5)))
 
 
 def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[int, int], dict[int, list[tuple[float, float, float, float, float]]]]:
