@@ -20,6 +20,7 @@ PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
 PLV_COST_PER_TOTAL_CHIP = (1472211/TARGET_CHIPS, 80944362/TARGET_CHIPS) # 12 - 1000 landmark servers
 # PLV_COST_PER_TOTAL_CHIP = (1472211/TARGET_CHIPS, 45173340/TARGET_CHIPS) # 12 - 500 landmark servers
+PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 
 MIX_STEPS = np.arange(0, 1.2, 0.2)
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
@@ -1632,18 +1633,18 @@ def add_cost_benefit_columns(
     result["PLV - Min Total Cost"] = TARGET_CHIPS * plv_cost_per_total_chip[0]
     result["PLV - Max Total Cost"] = TARGET_CHIPS * plv_cost_per_total_chip[1]
     result["PLV - Min Net Benefit"] = (
-        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[0]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[0] * PLV_DISCOUNT_RATE
         - result["PLV - Max Total Cost"]
     )
     result["PLV - Max Net Benefit"] = (
-        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[1]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[1] * PLV_DISCOUNT_RATE
         - result["PLV - Min Total Cost"]
     )
     result["PLV - Min Benefit Per Dollar"] = (
-        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] / result["PLV - Max Total Cost"]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * PLV_DISCOUNT_RATE / result["PLV - Max Total Cost"]
     )
     result["PLV - Max Benefit Per Dollar"] = (
-        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] / result["PLV - Min Total Cost"]
+        result[COLUMN_NAMES['plv_total_diverted_chips_identified']] * PLV_DISCOUNT_RATE / result["PLV - Min Total Cost"]
     )
     result[NET_BENEFIT_RELATIONSHIP_COLUMN] = _classify_net_benefit_relationship(result)
     result[BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN] = _classify_benefit_per_dollar_relationship(result)
