@@ -454,17 +454,14 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "Mix Description",
             "K Combo",
             "N Combo",
-            "Cluster Size (N)",
-            "Bad Records (K)",
+            "Total Tests",
+            "Total Component Chips",
             "Total Bad Records",
             "Number of Clusters",
-            "Tests (n)",
             "Physical Inspection - Total Diverted Chips Identified",
             "PLV - Total Diverted Chips Identified",
         ],
     ].copy()
-    summary_source["Total Tests"] = summary_source["Tests (n)"] * summary_source["Number of Clusters"]
-    summary_source["Total Component Chips"] = summary_source["Cluster Size (N)"] * summary_source["Number of Clusters"]
 
     grouped = summary_source.groupby("Scenario ID", sort=False, observed=True)
     total_scenarios = grouped.ngroups
