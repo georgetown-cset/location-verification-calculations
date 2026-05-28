@@ -24,161 +24,191 @@ Features:
   plv_cost_per_chip
 
 Target: Physical vs PLV Net Benefit Relationship
-Sampled rows: 10,167
-Training rows: 7,626
-Holdout rows: 2,541
-Holdout accuracy: 0.996
-Majority-class baseline accuracy on holdout: 0.503
-Macro precision: 0.952
-Macro recall: 0.983
+Sampled rows: 15,020
+Training rows: 11,265
+Holdout rows: 3,755
+Holdout accuracy: 0.981
+Majority-class baseline accuracy on holdout: 0.349
+Macro precision: 0.589
+Macro recall: 0.589
 
 Full-data relationship-code counts:
-  b: 5,588,959
-  c: 2,324,071
-  d: 167
-
-Balanced training-sample counts:
-  b: 5,000
-  c: 5,000
-  d: 167
-
-Holdout confusion matrix (rows=actual, columns=predicted):
-         b        c        d
-         b     1220        0        0
-         c        0     1270        7
-         d        0        2       42
-
-Largest standardized coefficients by relationship code:
-  Code b positive associations:
-    log_total_clusters_in_mix: 1.602
-    log_total_tests: 0.953
-    plv_cost_per_chip: 0.298
-    log_bad_records: 0.275
-    log_plv_detected: 0.269
-  Code b negative associations:
-    tests_per_cluster: -0.431
-    plv_identified_share: -0.379
-    physical_identified_share: -0.102
-    physical_to_plv_detected_ratio: -0.081
-    share_diverted: -0.069
-  Code c positive associations:
-    scenario_component_count: 0.488
-    plv_identified_share: 0.455
-    plv_cost_per_chip: 0.425
-    physical_identified_share: 0.137
-    physical_to_plv_detected_ratio: 0.113
-  Code c negative associations:
-    log_total_clusters_in_mix: -1.226
-    log_total_tests: -0.733
-    log_bad_records: -0.325
-    log_plv_detected: -0.317
-    log_physical_detected: -0.280
-  Code d positive associations:
-    tests_per_cluster: 0.352
-    share_diverted: 0.320
-    bad_records_per_test: 0.212
-    log_bad_records: 0.050
-    log_plv_detected: 0.048
-  Code d negative associations:
-    plv_cost_per_chip: -0.723
-    scenario_component_count: -0.497
-    log_total_clusters_in_mix: -0.376
-    log_total_tests: -0.219
-    plv_identified_share: -0.076
-
-------------------------------------------
-
-Target: Physical vs PLV Benefit Per Dollar Relationship
-Sampled rows: 20,379
-Training rows: 15,285
-Holdout rows: 5,094
-Holdout accuracy: 0.928
-Majority-class baseline accuracy on holdout: 0.251
-Macro precision: 0.890
-Macro recall: 0.776
-
-Full-data relationship-code counts:
-  a: 3,650,894
-  b: 1,484,343
-  c: 2,765,844
-  d: 11,737
-  e: 379
+  a: 160,490
+  b: 2,126,259
+  c: 296,217
+  d: 18
+  e: 2
 
 Balanced training-sample counts:
   a: 5,000
   b: 5,000
   c: 5,000
-  d: 5,000
-  e: 379
+  d: 18
+  e: 2
 
 Holdout confusion matrix (rows=actual, columns=predicted):
          a        b        c        d        e
-         a     1234        0        0        0        0
-         b       23     1214       21        0        0
-         c        0      228     1046        3        0
-         d        0        1        0     1221        4
-         e        0        0        0       89       10
+         a     1216        0        0        0        0
+         b       67     1158        0        0        0
+         c        0        0     1310        0        0
+         d        0        0        4        0        0
+         e        0        0        0        0        0
 
 Largest standardized coefficients by relationship code:
   Code a positive associations:
-    log_total_clusters_in_mix: 1.946
-    log_total_tests: 1.144
-    log_bad_records: 0.482
-    scenario_component_count: 0.470
-    log_plv_detected: 0.469
+    log_total_clusters_in_mix: 1.138
+    log_total_tests: 0.736
+    plv_minus_physical_detected_share: 0.410
+    plv_cost_per_chip: 0.284
+    physical_min_cost_per_test: 0.127
   Code a negative associations:
-    plv_identified_share: -1.069
-    tests_per_cluster: -0.964
-    plv_cost_per_chip: -0.243
-    physical_identified_share: -0.177
-    physical_to_plv_detected_ratio: -0.126
+    share_diverted: -0.478
+    log_plv_detected: -0.475
+    log_physical_detected: -0.471
+    log_bad_records: -0.467
+    physical_identified_share: -0.391
   Code b positive associations:
-    log_total_tests: 1.087
-    tests_per_cluster: 1.048
-    plv_cost_per_chip: 0.343
-    share_diverted: 0.343
-    plv_minus_physical_detected_share: 0.150
+    log_total_clusters_in_mix: 1.089
+    log_physical_detected: 0.788
+    log_plv_detected: 0.745
+    log_bad_records: 0.742
+    log_total_tests: 0.713
   Code b negative associations:
-    log_physical_detected: -0.275
-    log_bad_records: -0.266
-    log_plv_detected: -0.263
-    physical_min_cost_per_test: -0.174
-    physical_cost_range_per_test: -0.174
+    plv_minus_physical_detected_share: -0.246
+    bad_records_per_test: -0.075
+    tests_per_cluster: 0.051
+    share_diverted: 0.069
+    physical_cost_range_per_test: 0.072
   Code c positive associations:
-    scenario_component_count: 1.248
-    plv_identified_share: 0.790
-    plv_cost_per_chip: 0.405
-    physical_identified_share: 0.210
-    physical_to_plv_detected_ratio: 0.168
+    plv_cost_per_chip: 0.379
+    scenario_component_count: 0.181
+    share_diverted: 0.151
+    physical_identified_share: 0.107
+    plv_identified_share: 0.102
   Code c negative associations:
-    tests_per_cluster: -0.846
-    log_total_tests: -0.574
-    share_diverted: -0.352
-    bad_records_per_test: -0.197
-    plv_minus_physical_detected_share: -0.166
+    log_total_clusters_in_mix: -1.711
+    log_total_tests: -1.160
+    tests_per_cluster: -0.428
+    log_physical_detected: -0.255
+    log_bad_records: -0.197
   Code d positive associations:
-    tests_per_cluster: 0.764
-    plv_identified_share: 0.213
-    physical_identified_share: 0.181
-    physical_to_plv_detected_ratio: 0.172
-    share_diverted: 0.028
+    bad_records_per_test: 0.280
+    tests_per_cluster: 0.228
+    share_diverted: 0.159
+    physical_identified_share: 0.004
+    physical_to_plv_detected_ratio: 0.000
   Code d negative associations:
-    log_total_clusters_in_mix: -1.183
-    log_total_tests: -1.053
-    scenario_component_count: -0.697
-    bad_records_per_test: -0.232
-    plv_minus_physical_detected_share: -0.173
+    plv_cost_per_chip: -0.456
+    log_total_clusters_in_mix: -0.354
+    scenario_component_count: -0.247
+    log_total_tests: -0.192
+    plv_identified_share: -0.157
   Code e positive associations:
-    bad_records_per_test: 0.473
-    share_diverted: 0.083
-    plv_minus_physical_detected_share: 0.075
-    tests_per_cluster: -0.002
-    plv_identified_share: -0.036
+    share_diverted: 0.099
+    tests_per_cluster: 0.026
+    bad_records_per_test: 0.012
+    physical_identified_share: 0.005
+    physical_to_plv_detected_ratio: 0.001
   Code e negative associations:
-    scenario_component_count: -0.895
-    log_total_clusters_in_mix: -0.649
-    log_total_tests: -0.604
-    plv_cost_per_chip: -0.482
-    physical_cost_range_per_test: -0.121
+    plv_cost_per_chip: -0.490
+    log_total_clusters_in_mix: -0.162
+    plv_identified_share: -0.104
+    log_total_tests: -0.097
+    scenario_component_count: -0.081
+
+------------------------------------------
+
+Target: Physical vs PLV Benefit Per Dollar Relationship
+Sampled rows: 15,085
+Training rows: 11,314
+Holdout rows: 3,771
+Holdout accuracy: 0.976
+Majority-class baseline accuracy on holdout: 0.334
+Macro precision: 0.757
+Macro recall: 0.651
+
+Full-data relationship-code counts:
+  a: 1,940,843
+  b: 407,936
+  c: 234,122
+  d: 83
+  e: 2
+
+Balanced training-sample counts:
+  a: 5,000
+  b: 5,000
+  c: 5,000
+  d: 83
+  e: 2
+
+Holdout confusion matrix (rows=actual, columns=predicted):
+         a        b        c        d        e
+         a     1259        0        0        0        0
+         b        0     1197       59        0        0
+         c        0       17     1219        0        0
+         d        0       13        0        6        0
+         e        0        0        0        1        0
+
+Largest standardized coefficients by relationship code:
+  Code a positive associations:
+    log_total_clusters_in_mix: 1.811
+    log_total_tests: 0.984
+    plv_minus_physical_detected_share: 0.562
+    plv_identified_share: 0.414
+    scenario_component_count: 0.378
+  Code a negative associations:
+    tests_per_cluster: -0.460
+    bad_records_per_test: -0.030
+    share_diverted: 0.040
+    physical_identified_share: 0.102
+    physical_to_plv_detected_ratio: 0.122
+  Code b positive associations:
+    tests_per_cluster: 0.680
+    plv_minus_physical_detected_share: 0.569
+    plv_identified_share: 0.446
+    plv_cost_per_chip: 0.422
+    log_total_tests: 0.238
+  Code b negative associations:
+    log_total_clusters_in_mix: -0.813
+    scenario_component_count: -0.432
+    physical_cost_range_per_test: -0.332
+    physical_min_cost_per_test: -0.332
+    share_diverted: -0.298
+  Code c positive associations:
+    scenario_component_count: 0.440
+    plv_cost_per_chip: 0.364
+    share_diverted: 0.223
+    physical_min_cost_per_test: 0.170
+    physical_cost_range_per_test: 0.170
+  Code c negative associations:
+    plv_minus_physical_detected_share: -1.129
+    log_total_tests: -0.950
+    plv_identified_share: -0.726
+    tests_per_cluster: -0.421
+    log_total_clusters_in_mix: -0.388
+  Code d positive associations:
+    bad_records_per_test: 0.350
+    tests_per_cluster: 0.121
+    share_diverted: 0.029
+    plv_minus_physical_detected_share: -0.020
+    log_bad_records: -0.069
+  Code d negative associations:
+    log_total_clusters_in_mix: -0.673
+    plv_cost_per_chip: -0.577
+    scenario_component_count: -0.397
+    log_total_tests: -0.349
+    physical_min_cost_per_test: -0.092
+  Code e positive associations:
+    bad_records_per_test: 0.093
+    tests_per_cluster: 0.080
+    log_total_tests: 0.076
+    log_total_clusters_in_mix: 0.064
+    physical_cost_range_per_test: 0.032
+  Code e negative associations:
+    plv_cost_per_chip: -0.548
+    physical_identified_share: -0.056
+    physical_to_plv_detected_ratio: -0.055
+    plv_identified_share: -0.047
+    log_physical_detected: -0.042
 
 ------------------------------------------
