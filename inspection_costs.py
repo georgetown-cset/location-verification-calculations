@@ -124,6 +124,10 @@ LONG_SCENARIO_BENEFIT_SCENARIOS = {
     "PLV - Min Benefit Per Dollar": "PLV (Conservative)",
     "PLV - Max Benefit Per Dollar": "PLV (Optimistic)",
 }
+SMUGGLED_CHIPS_METRIC_FAMILY = "Smuggled Chips"
+SMUGGLED_CHIPS_SCENARIO_GROUP = "Scenario Total"
+SMUGGLED_CHIPS_SCENARIO_VARIANT = "Smuggled Chips"
+SMUGGLED_CHIPS_SCENARIO_TYPE = "Total Smuggled Chips"
 NET_BENEFIT_RELATIONSHIP_COLUMN = "Physical vs PLV Net Benefit Relationship"
 NET_BENEFIT_RELATIONSHIP_LABELS = {
     "a": "Physical max net benefit is less than PLV min net benefit",
@@ -1131,11 +1135,33 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS
     )
 
-    boxplot_df = pd.concat([net_benefit_df, benefit_per_dollar_df], ignore_index=True)
+    smuggled_chips_df = final_df[
+        [
+            COLUMN_NAMES['mix_id'],
+            COLUMN_NAMES['scenario_id'],
+            NET_BENEFIT_RELATIONSHIP_COLUMN,
+            COLUMN_NAMES['bad_records'],
+        ]
+    ].copy()
+    smuggled_chips_df[COLUMN_NAMES['metric_family']] = SMUGGLED_CHIPS_METRIC_FAMILY
+    smuggled_chips_df[COLUMN_NAMES['relationship_code']] = smuggled_chips_df[NET_BENEFIT_RELATIONSHIP_COLUMN]
+    smuggled_chips_df[COLUMN_NAMES['relationship_description']] = smuggled_chips_df[COLUMN_NAMES['relationship_code']].map(
+        NET_BENEFIT_RELATIONSHIP_LABELS
+    )
+    smuggled_chips_df[COLUMN_NAMES['scenario_group']] = SMUGGLED_CHIPS_SCENARIO_GROUP
+    smuggled_chips_df[COLUMN_NAMES['scenario_variant']] = SMUGGLED_CHIPS_SCENARIO_VARIANT
+    smuggled_chips_df[COLUMN_NAMES['scenario_type']] = SMUGGLED_CHIPS_SCENARIO_TYPE
+    smuggled_chips_df[COLUMN_NAMES['value']] = smuggled_chips_df[COLUMN_NAMES['bad_records']].astype("float64")
+
+    boxplot_df = pd.concat([net_benefit_df, benefit_per_dollar_df, smuggled_chips_df], ignore_index=True)
     boxplot_df[COLUMN_NAMES['scenario_group']] = np.where(
         boxplot_df[COLUMN_NAMES['scenario_type']].str.startswith("Physical"),
         "Physical Inspection",
-        "PLV",
+        np.where(
+            boxplot_df[COLUMN_NAMES['scenario_type']].str.startswith("PLV"),
+            "PLV",
+            boxplot_df[COLUMN_NAMES['scenario_group']],
+        ),
     )
     boxplot_df[COLUMN_NAMES['scenario_variant']] = boxplot_df[COLUMN_NAMES['scenario_type']].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
     output_columns = [
@@ -1209,17 +1235,13 @@ def _write_relationship_boxplot_values_from_parquet(
     batch_size: int = 65_536,
 ) -> pd.DataFrame:
     print(f"Building relationship boxplot summary from cached costed parquet: {parquet_path}")
-    file_columns = set(_parquet_file_columns(parquet_path))
     columns = [
-        column
-        for column in [
-            COLUMN_NAMES['mix_id'],
-            COLUMN_NAMES['scenario_id'],
-            NET_BENEFIT_RELATIONSHIP_COLUMN,
-            BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
-            *LONG_SCENARIO_VALUE_VARS,
-        ]
-        if column in file_columns
+        COLUMN_NAMES['mix_id'],
+        COLUMN_NAMES['scenario_id'],
+        NET_BENEFIT_RELATIONSHIP_COLUMN,
+        BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN,
+        COLUMN_NAMES['bad_records'],
+        *LONG_SCENARIO_VALUE_VARS,
     ]
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     grouped_values: dict[tuple[object, ...], list[float]] = {}
@@ -1273,14 +1295,6 @@ def _write_relationship_boxplot_values_from_parquet(
     print(f"Writing relationship boxplot summary CSV to {output_csv_path}")
     summary_df.to_csv(output_csv_path, index=False)
     return summary_df
-
-
-def _parquet_file_columns(parquet_path: Path) -> list[str]:
-    pq, _pa = _import_pyarrow_parquet()
-    parquet_file = pq.ParquetFile(parquet_path)
-    return list(parquet_file.schema.names)
-
-
 RELATIONSHIP_MODEL_BASE_FEATURE_COLUMNS = [
     COLUMN_NAMES['total_clusters_in_mix'],
     COLUMN_NAMES['scenario_component_count'],
