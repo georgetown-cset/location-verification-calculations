@@ -18,8 +18,7 @@ DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of dete
 
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
-# PLV_COST_PER_TOTAL_CHIP = (1447610/TARGET_CHIPS, 79292044/TARGET_CHIPS) # 12 - 1000 landmark servers
-PLV_COST_PER_TOTAL_CHIP = (1447610/TARGET_CHIPS, 43521022/TARGET_CHIPS) # 12 - 500 landmark servers
+PLV_COST_PER_TOTAL_CHIP = (1448051/TARGET_CHIPS, 79476880/TARGET_CHIPS) # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 
 MIX_STEPS = np.arange(0, 1.2, 0.2)
