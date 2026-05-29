@@ -18,8 +18,8 @@ DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of dete
 
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (11, 125)
 PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2500, 5000)
-PLV_COST_PER_TOTAL_CHIP = (1472211/TARGET_CHIPS, 80944362/TARGET_CHIPS) # 12 - 1000 landmark servers
-# PLV_COST_PER_TOTAL_CHIP = (1472211/TARGET_CHIPS, 45173340/TARGET_CHIPS) # 12 - 500 landmark servers
+# PLV_COST_PER_TOTAL_CHIP = (1447610/TARGET_CHIPS, 79292044/TARGET_CHIPS) # 12 - 1000 landmark servers
+PLV_COST_PER_TOTAL_CHIP = (1447610/TARGET_CHIPS, 43521022/TARGET_CHIPS) # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 
 MIX_STEPS = np.arange(0, 1.2, 0.2)
@@ -27,9 +27,9 @@ CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider i
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
 N_VALS = [1, 10, 100, 1000] # Number of tests conducted on a cluster
 PHYSICAL_INSPECTION_M_VALS = [0.05] # Probability that a diverted chip is not detected by a physical inspection test (i.e., the "miss" probability)
-PLV_M_VALS = [0.05] # Probability that a diverted chip is not detected by a PLV test (i.e., the "miss" probability)
-ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
+PLV_M_VALS = [0.1] # Probability that a diverted chip is not detected by a PLV test (i.e., the "miss" probability)
 
+ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
 OUTPUT_DIR = "output"
 DATA_SAVED_DIR = "data/saved"
 PARQUET_COMPRESSION = "zstd"
