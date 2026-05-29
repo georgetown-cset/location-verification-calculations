@@ -1,8 +1,8 @@
 Relationship Code,Net Benefit Relationship Description,Benefit Per Dollar Relationship Description,Net Benefit Scenario Count,Benefit Per Dollar Scenario Count
-a,Physical max net benefit is less than PLV min net benefit,Physical max benefit per dollar is less than PLV min benefit per dollar,232688,1938565
-b,Physical max net benefit is within PLV net benefit range and Physical min net benefit is below PLV min net benefit,Physical max benefit per dollar is within PLV range and Physical min benefit per dollar is below PLV min benefit per dollar,300891,393915
-c,Physical min and max net benefits are both within PLV net benefit range,Physical min and max benefit per dollar are both within PLV range,27261,249835
-d,Physical min net benefit is within PLV net benefit range and Physical max net benefit is above PLV max net benefit,Physical min benefit per dollar is within PLV range and Physical max benefit per dollar is above PLV max benefit per dollar,265073,470
-e,Physical min net benefit is greater than PLV max net benefit,Physical min benefit per dollar is greater than PLV max benefit per dollar,19,201
-f,Physical net benefit range spans both sides of PLV net benefit range,Physical benefit per dollar range spans both sides of PLV range,1757054,0
+a,Physical max net benefit is less than PLV min net benefit,Physical max benefit per dollar is less than PLV min benefit per dollar,262480,2048738
+b,Physical max net benefit is within PLV net benefit range and Physical min net benefit is below PLV min net benefit,Physical max benefit per dollar is within PLV range and Physical min benefit per dollar is below PLV min benefit per dollar,285261,452529
+c,Physical min and max net benefits are both within PLV net benefit range,Physical min and max benefit per dollar are both within PLV range,8400,81051
+d,Physical min net benefit is within PLV net benefit range and Physical max net benefit is above PLV max net benefit,Physical min benefit per dollar is within PLV range and Physical max benefit per dollar is above PLV max benefit per dollar,214580,482
+e,Physical min net benefit is greater than PLV max net benefit,Physical min benefit per dollar is greater than PLV max benefit per dollar,18,186
+f,Physical net benefit range spans both sides of PLV net benefit range,Physical benefit per dollar range spans both sides of PLV range,1812247,0
 Total,All scenarios,All scenarios,2582986,2582986
