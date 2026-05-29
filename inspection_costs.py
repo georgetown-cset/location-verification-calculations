@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 
-TARGET_CHIPS = 3_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
+TARGET_CHIPS = 10_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
 SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25 # Share of clusters in a scenario component that are assumed to contain smuggling. This imposes an upper bound on the number of clusters with smuggling in a scenario component.
 NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of detecting a diverted chip, which is used to convert net benefit estimates from chip counts to dollars
@@ -25,8 +25,9 @@ PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (8.3, 48.8)
 PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2545, 5900)
 PLV_COST_PER_TOTAL_CHIP = (2_251_688/TARGET_CHIPS, 72_427_200/TARGET_CHIPS) # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
+MIN_SHARE_DIVERTED = 0.1 # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
-MIX_STEPS = np.arange(0, 1.2, 0.2)
+MIX_STEPS = np.arange(0, 1.05, 0.05)
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
 N_VALS = [1, 10, 100, 1000] # Number of tests conducted on a cluster
@@ -697,7 +698,10 @@ def _build_mix_records(
         )
         for component in mix_components
     ]
-    k_options_per_component = [component[4] for component in component_data]
+    k_options_per_component = [
+        [k_val for k_val in component[4] if (k_val / component[0]) >= MIN_SHARE_DIVERTED]
+        for component in component_data
+    ]
     scenario_counter = 0
 
     for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
