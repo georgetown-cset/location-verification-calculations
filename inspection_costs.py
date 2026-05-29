@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import time
 from collections import Counter
 from fractions import Fraction
 from pathlib import Path
@@ -1865,6 +1866,7 @@ def run_inspection_costs_workflow(
     relationship_summary_df = None
     relationship_boxplot_df = None
     relationship_model_text = None
+    start_time = time.perf_counter()
 
     print("Starting inspection costs workflow")
     if scenarios_costed_path.exists():
@@ -1960,7 +1962,8 @@ def run_inspection_costs_workflow(
             scenarios_costed_path,
             relationship_model_text_path,
         )
-    print("Inspection costs workflow complete")
+    elapsed_seconds = time.perf_counter() - start_time
+    print(f"Inspection costs workflow complete in {elapsed_seconds:.2f} seconds")
     return {
         "scenario_component_df": scenario_component_df,
         "final_df": final_df,
