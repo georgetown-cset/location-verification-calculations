@@ -1142,23 +1142,29 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS
     )
 
-    smuggled_chips_df = final_df[
-        [
-            COLUMN_NAMES['mix_id'],
-            COLUMN_NAMES['scenario_id'],
-            NET_BENEFIT_RELATIONSHIP_COLUMN,
-            COLUMN_NAMES['bad_records'],
-        ]
-    ].copy()
+    smuggled_chips_df = (
+        final_df.groupby(NET_BENEFIT_RELATIONSHIP_COLUMN, sort=False, observed=True)[COLUMN_NAMES['bad_records']]
+        .sum()
+        .reindex(RELATIONSHIP_CODE_ORDER)
+        .dropna()
+        .reset_index()
+        .rename(
+            columns={
+                NET_BENEFIT_RELATIONSHIP_COLUMN: COLUMN_NAMES['relationship_code'],
+                COLUMN_NAMES['bad_records']: COLUMN_NAMES['value'],
+            }
+        )
+    )
     smuggled_chips_df[COLUMN_NAMES['metric_family']] = SMUGGLED_CHIPS_METRIC_FAMILY
-    smuggled_chips_df[COLUMN_NAMES['relationship_code']] = smuggled_chips_df[NET_BENEFIT_RELATIONSHIP_COLUMN]
     smuggled_chips_df[COLUMN_NAMES['relationship_description']] = smuggled_chips_df[COLUMN_NAMES['relationship_code']].map(
         NET_BENEFIT_RELATIONSHIP_LABELS
     )
     smuggled_chips_df[COLUMN_NAMES['scenario_group']] = SMUGGLED_CHIPS_SCENARIO_GROUP
     smuggled_chips_df[COLUMN_NAMES['scenario_variant']] = SMUGGLED_CHIPS_SCENARIO_VARIANT
     smuggled_chips_df[COLUMN_NAMES['scenario_type']] = SMUGGLED_CHIPS_SCENARIO_TYPE
-    smuggled_chips_df[COLUMN_NAMES['value']] = smuggled_chips_df[COLUMN_NAMES['bad_records']].astype("float64")
+    smuggled_chips_df[COLUMN_NAMES['mix_id']] = "All Scenarios"
+    smuggled_chips_df[COLUMN_NAMES['scenario_id']] = "All Scenarios"
+    smuggled_chips_df[COLUMN_NAMES['value']] = smuggled_chips_df[COLUMN_NAMES['value']].astype("float64")
 
     boxplot_df = pd.concat([net_benefit_df, benefit_per_dollar_df, smuggled_chips_df], ignore_index=True)
     boxplot_df[COLUMN_NAMES['scenario_group']] = np.where(
@@ -1171,6 +1177,8 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         ),
     )
     boxplot_df[COLUMN_NAMES['scenario_variant']] = boxplot_df[COLUMN_NAMES['scenario_type']].map(LONG_SCENARIO_BENEFIT_SCENARIOS)
+    smuggled_mask = boxplot_df[COLUMN_NAMES['metric_family']] == SMUGGLED_CHIPS_METRIC_FAMILY
+    boxplot_df.loc[smuggled_mask, COLUMN_NAMES['scenario_variant']] = SMUGGLED_CHIPS_SCENARIO_VARIANT
     output_columns = [
         COLUMN_NAMES['metric_family'],
         COLUMN_NAMES['relationship_code'],
