@@ -7,8 +7,13 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Iterable, Optional
 
+import matplotlib
 import numpy as np
 import pandas as pd
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 TARGET_CHIPS = 3_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
@@ -38,6 +43,7 @@ SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
 SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
 RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{OUTPUT_DIR}/relationship_boxplot_values.csv"
+RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{OUTPUT_DIR}/images"
 RELATIONSHIP_MODEL_TEXT_PATH = f"{OUTPUT_DIR}/relationship_code_model.txt"
 
 COLUMN_NAMES = {
@@ -146,6 +152,7 @@ BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS = {
     "e": "Physical min benefit per dollar is greater than PLV max benefit per dollar",
     "f": "Physical benefit per dollar range spans both sides of PLV range",
 }
+RELATIONSHIP_CODE_ORDER = list(NET_BENEFIT_RELATIONSHIP_LABELS.keys())
 
 
 def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
@@ -1229,9 +1236,133 @@ def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.Da
     ].sort_values(group_columns).reset_index(drop=True)
 
 
+def _slugify_filename(value: str) -> str:
+    slug = "".join(character.lower() if character.isalnum() else "_" for character in value)
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug.strip("_")
+
+
+def _render_relationship_boxplot_images(
+    grouped_values: dict[tuple[object, ...], list[float]],
+    output_images_dir: Path,
+) -> list[Path]:
+    output_images_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths: list[Path] = []
+    if not grouped_values:
+        return saved_paths
+
+    family_names = sorted({group_key[0] for group_key in grouped_values})
+    for metric_family in family_names:
+        family_groups = {
+            group_key: values
+            for group_key, values in grouped_values.items()
+            if group_key[0] == metric_family
+        }
+        if not family_groups:
+            continue
+
+        relationship_codes = [code for code in RELATIONSHIP_CODE_ORDER if any(group_key[1] == code for group_key in family_groups)]
+        scenario_types = list(dict.fromkeys(group_key[5] for group_key in family_groups))
+        if not relationship_codes or not scenario_types:
+            continue
+
+        family_label = str(metric_family)
+        fig_width = max(10.0, len(relationship_codes) * max(1.6, 0.55 * len(scenario_types)))
+        fig, ax = plt.subplots(figsize=(fig_width, 6.5))
+        color_map = plt.get_cmap("tab10")
+        colors = [color_map(index % 10) for index in range(len(scenario_types))]
+        group_width = 0.78
+        box_width = min(0.22, group_width / max(1, len(scenario_types) + 1))
+        offsets = np.linspace(
+            -group_width / 2 + box_width,
+            group_width / 2 - box_width,
+            num=len(scenario_types),
+        )
+
+        legend_handles = []
+        for type_index, scenario_type in enumerate(scenario_types):
+            type_values = []
+            type_positions = []
+            for relationship_index, relationship_code in enumerate(relationship_codes, start=1):
+                group_key = next(
+                    (
+                        key
+                        for key in family_groups
+                        if key[1] == relationship_code and key[5] == scenario_type
+                    ),
+                    None,
+                )
+                if group_key is None:
+                    continue
+                values = family_groups[group_key]
+                if not values:
+                    continue
+                type_values.append(values)
+                type_positions.append(relationship_index + offsets[type_index])
+
+            if not type_values:
+                continue
+
+            ax.boxplot(
+                type_values,
+                positions=type_positions,
+                widths=box_width,
+                patch_artist=True,
+                manage_ticks=False,
+                boxprops={"facecolor": colors[type_index], "edgecolor": "black"},
+                medianprops={"color": "black", "linewidth": 1.2},
+                whiskerprops={"color": "black", "linewidth": 1.0},
+                capprops={"color": "black", "linewidth": 1.0},
+                flierprops={"marker": "o", "markersize": 2.5, "markerfacecolor": colors[type_index], "markeredgecolor": colors[type_index], "alpha": 0.35},
+            )
+            legend_handles.append(Patch(facecolor=colors[type_index], edgecolor="black", label=scenario_type))
+
+        ax.set_title(f"{family_label} by Relationship Code")
+        ax.set_xlabel("Relationship Code")
+        ax.set_ylabel(family_label)
+        ax.set_xticks(range(1, len(relationship_codes) + 1))
+        ax.set_xticklabels(relationship_codes)
+        ax.grid(axis="y", linestyle="--", alpha=0.3)
+        if legend_handles:
+            ax.legend(handles=legend_handles, title="Scenario Type", loc="best")
+        fig.tight_layout()
+
+        output_path = output_images_dir / f"relationship_boxplot_{_slugify_filename(family_label)}.jpeg"
+        fig.savefig(output_path, format="jpeg", dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        saved_paths.append(output_path)
+        print(f"Wrote relationship boxplot image to {output_path}")
+
+    return saved_paths
+
+
+def _write_relationship_boxplot_images_from_dataframe(
+    boxplot_df: pd.DataFrame,
+    output_images_dir: Path,
+) -> list[Path]:
+    group_columns = [
+        COLUMN_NAMES['metric_family'],
+        COLUMN_NAMES['relationship_code'],
+        COLUMN_NAMES['relationship_description'],
+        COLUMN_NAMES['scenario_group'],
+        COLUMN_NAMES['scenario_variant'],
+        COLUMN_NAMES['scenario_type'],
+    ]
+    grouped_values: dict[tuple[object, ...], list[float]] = {}
+    if boxplot_df.empty:
+        return []
+
+    grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
+    for group_key, values in grouped:
+        grouped_values[tuple(group_key)] = values.tolist()
+    return _render_relationship_boxplot_images(grouped_values, output_images_dir)
+
+
 def _write_relationship_boxplot_values_from_parquet(
     parquet_path: Path,
     output_csv_path: Path,
+    output_images_dir: Path,
     batch_size: int = 65_536,
 ) -> pd.DataFrame:
     print(f"Building relationship boxplot summary from cached costed parquet: {parquet_path}")
@@ -1294,6 +1425,7 @@ def _write_relationship_boxplot_values_from_parquet(
     summary_df = pd.DataFrame(summary_rows).sort_values(group_columns).reset_index(drop=True)
     print(f"Writing relationship boxplot summary CSV to {output_csv_path}")
     summary_df.to_csv(output_csv_path, index=False)
+    _render_relationship_boxplot_images(grouped_values, output_images_dir)
     return summary_df
 RELATIONSHIP_MODEL_BASE_FEATURE_COLUMNS = [
     COLUMN_NAMES['total_clusters_in_mix'],
@@ -1713,6 +1845,7 @@ def run_inspection_costs_workflow(
     scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
     relationship_summary_path = Path(RELATIONSHIP_SUMMARY_CSV_PATH)
     relationship_boxplot_values_path = Path(RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
+    relationship_boxplot_images_path = Path(RELATIONSHIP_BOXPLOT_IMAGES_DIR)
     relationship_model_text_path = Path(RELATIONSHIP_MODEL_TEXT_PATH)
     detection_lookup_table = None
     scenario_component_df = None
@@ -1735,6 +1868,7 @@ def run_inspection_costs_workflow(
         relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
             scenarios_costed_path,
             relationship_boxplot_values_path,
+            relationship_boxplot_images_path,
         )
 
         relationship_model_text = write_relationship_code_model_report(
@@ -1805,6 +1939,10 @@ def run_inspection_costs_workflow(
         relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"Writing relationship boxplot CSV to {relationship_boxplot_values_path}")
         relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
+        _write_relationship_boxplot_images_from_dataframe(
+            relationship_boxplot_rows_df,
+            relationship_boxplot_images_path,
+        )
 
         relationship_model_text = write_relationship_code_model_report(
             scenarios_costed_path,
