@@ -17,7 +17,7 @@ NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of detecting a diverted chip, which is used to convert net benefit estimates from chip counts to dollars
 
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (8.3, 48.8)
-PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION = (2545, 5900)
+PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2545, 5900)
 PLV_COST_PER_TOTAL_CHIP = (2_251_688/TARGET_CHIPS, 72_427_200/TARGET_CHIPS) # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 
@@ -1623,7 +1623,7 @@ def _final_scenario_component_arrow_schema(pa):
 def add_cost_benefit_columns(
     summary_df: pd.DataFrame,
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
-    phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
+    phys_inspection_fixed_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
 ) -> pd.DataFrame:
     result = summary_df.copy()
@@ -1633,11 +1633,11 @@ def add_cost_benefit_columns(
         result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['cluster_size']]
 
     result["Physical Inspection - Min Total Cost"] = (
-        (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[0]
+        (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_fixed_cost_per_inspection[0]
         + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[0])*NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR
     )
     result["Physical Inspection - Max Total Cost"] = (
-        (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_travel_cost_per_inspection[1]
+        (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_fixed_cost_per_inspection[1]
         + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[1])*NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR
     )
     result["Physical - Min Net Benefit"] = (
@@ -1686,7 +1686,7 @@ def run_inspection_costs_workflow(
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = MIX_STEPS,
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
-    phys_inspection_travel_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_TRAVEL_COST_PER_INSPECTION,
+    phys_inspection_fixed_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
     plv_cost_per_total_chip: tuple[float, float] = PLV_COST_PER_TOTAL_CHIP,
 ) -> dict[str, object]:
     cluster_sizes = list(cluster_sizes)
@@ -1773,7 +1773,7 @@ def run_inspection_costs_workflow(
         final_df = add_cost_benefit_columns(
             scenario_df,
             phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-            phys_inspection_travel_cost_per_inspection=phys_inspection_travel_cost_per_inspection,
+            phys_inspection_fixed_cost_per_inspection=phys_inspection_fixed_cost_per_inspection,
             plv_cost_per_total_chip=plv_cost_per_total_chip,
         )
         scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
