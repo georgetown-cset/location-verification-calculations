@@ -29,7 +29,7 @@ PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 MIN_SHARE_DIVERTED = 0.1 # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
-MIX_STEP_SIZE = 0.10
+MIX_STEP_SIZE = 0.2
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
 N_VALS = [0, 1, 10, 100, 1000] # Number of tests conducted on a cluster
@@ -483,7 +483,7 @@ def build_scenarios(
         for mix_components in mix_data:
             mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
             mix_parquet_path = _mix_parquet_path(component_dataset_path, mix_id)
-            if mix_parquet_path.exists() and _component_mix_file_is_current_version(mix_parquet_path, pq):
+            if mix_parquet_path.exists():
                 mix_scenario_component_count = pq.ParquetFile(mix_parquet_path).metadata.num_rows
                 mix_summary_count = _count_scenarios_in_component_file(mix_parquet_path, pq)
                 mix_fragment_count = 0
@@ -661,38 +661,6 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
     return scenario_summary
 
 
-def _component_mix_file_is_current_version(mix_parquet_path: Path, pq) -> bool:
-    expected_columns = [
-        COLUMN_NAMES['mix_id'],
-        COLUMN_NAMES['scenario_id'],
-        COLUMN_NAMES['mix_description'],
-        COLUMN_NAMES['total_clusters_in_mix'],
-        COLUMN_NAMES['total_tests'],
-        COLUMN_NAMES['total_component_chips'],
-        COLUMN_NAMES['scenario_component_count'],
-        COLUMN_NAMES['k_combo'],
-        COLUMN_NAMES['n_combo'],
-        COLUMN_NAMES['cluster_size'],
-        COLUMN_NAMES['bad_records'],
-        COLUMN_NAMES['number_of_clusters'],
-        COLUMN_NAMES['number_of_clusters_with_smuggling'],
-        COLUMN_NAMES['tests'],
-        COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
-        COLUMN_NAMES['physical_inspection_p_detect'],
-        COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
-        COLUMN_NAMES['plv_chip_level_miss_prob'],
-        COLUMN_NAMES['plv_p_detect'],
-        COLUMN_NAMES['plv_diverted_chips_identified'],
-        COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
-        COLUMN_NAMES['plv_total_diverted_chips_identified'],
-    ]
-    try:
-        parquet_file = pq.ParquetFile(mix_parquet_path)
-    except Exception:
-        return False
-    return list(parquet_file.schema.names) == expected_columns
-
-
 def _count_scenarios_in_component_file(mix_parquet_path: Path, pq) -> int:
     parquet_file = pq.ParquetFile(mix_parquet_path)
     scenario_ids: set[str] = set()
@@ -730,8 +698,6 @@ def _build_mix_records(
     physical_m_vals: Iterable[float],
     plv_m_vals: Iterable[float],
     target_chips: int,
-    emit_scenario: Optional[callable] = None,
-    skip_scenarios: int = 0,
 ) -> tuple[list[tuple[object, ...]], int, int]:
     scenario_component_records: list[tuple[object, ...]] = []
     mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
@@ -773,8 +739,6 @@ def _build_mix_records(
                 for physical_m_val in physical_m_vals:
                     for plv_m_val in plv_m_vals:
                         scenario_counter += 1
-                        if scenario_counter <= skip_scenarios:
-                            continue
                         scenario_id = (
                             f"{mix_id}_K{'-'.join(map(str, k_combo))}_n{'-'.join(map(str, n_combo))}"
                             f"_pm{physical_m_val}_plvm{plv_m_val}"
@@ -818,23 +782,7 @@ def _build_mix_records(
                                 )
                             )
 
-                        if emit_scenario is not None:
-                            emit_scenario(
-                                (
-                                    mix_id,
-                                    scenario_id,
-                                    mix_description,
-                                    total_clusters_in_mix,
-                                    num_clusters_comp * n_val,
-                                    num_clusters_comp * N_comp,
-                                    scenario_component_count,
-                                    "-".join(map(str, k_combo)),
-                                    "-".join(map(str, n_combo)),
-                                ),
-                                flat_rows,
-                            )
-                        else:
-                            scenario_component_records.extend(flat_rows)
+                        scenario_component_records.extend(flat_rows)
 
                 if n_combo_count % 1000 == 0:
                     print(
@@ -916,6 +864,72 @@ def _iter_parquet_batches(
         yield batch.to_pandas()
 
 
+def _overview_dataframe(name: str, df: pd.DataFrame, max_rows: int = 5) -> None:
+    print(f"\n{name}")
+    print(f"Rows: {len(df):,}; columns: {len(df.columns):,}")
+    if df.empty:
+        print("(empty)")
+    else:
+        print(df.head(max_rows))
+
+
+def _overview_parquet_file(path: Path, name: str, max_rows: int = 5) -> None:
+    print(f"\n{name}: {path}")
+    if not path.exists():
+        print("Missing")
+        return
+
+    pq, _pa = _import_pyarrow_parquet()
+    parquet_file = pq.ParquetFile(path)
+    print(f"Rows: {parquet_file.metadata.num_rows:,}; columns: {len(parquet_file.schema.names):,}")
+    for batch in parquet_file.iter_batches(batch_size=max_rows):
+        preview_df = batch.to_pandas()
+        print(preview_df.head(max_rows) if not preview_df.empty else "(empty)")
+        break
+
+
+def _overview_parquet_dataset(path: Path, name: str, max_rows: int = 5) -> None:
+    print(f"\n{name}: {path}")
+    if not path.exists():
+        print("Missing")
+        return
+
+    parquet_paths = sorted(path.rglob("*.parquet")) if path.is_dir() else [path]
+    if not parquet_paths:
+        print("No parquet files")
+        return
+
+    pq, _pa = _import_pyarrow_parquet()
+    row_count = 0
+    column_count = 0
+    preview_df = pd.DataFrame()
+    for parquet_path in parquet_paths:
+        parquet_file = pq.ParquetFile(parquet_path)
+        row_count += parquet_file.metadata.num_rows
+        column_count = max(column_count, len(parquet_file.schema.names))
+        if preview_df.empty:
+            for batch in parquet_file.iter_batches(batch_size=max_rows):
+                preview_df = batch.to_pandas()
+                break
+
+    print(f"Files: {len(parquet_paths):,}; rows: {row_count:,}; columns: {column_count:,}")
+    print(preview_df.head(max_rows) if not preview_df.empty else "(empty)")
+
+
+def _overview_csv_file(path: Path, name: str, max_rows: int = 5) -> None:
+    print(f"\n{name}: {path}")
+    if not path.exists():
+        print("Missing")
+        return
+
+    preview_df = pd.read_csv(path, nrows=max_rows)
+    with path.open(encoding="utf-8") as csv_file:
+        row_count = sum(1 for _line in csv_file)
+    row_count = max(0, row_count - 1)
+    print(f"Rows: {row_count:,}; columns: {len(preview_df.columns):,}")
+    print(preview_df if not preview_df.empty else "(empty)")
+
+
 def _classify_interval_relationship(
     summary_df: pd.DataFrame,
     *,
@@ -947,103 +961,6 @@ def _classify_interval_relationship(
     if (result == "unknown").any():
         raise ValueError(error_message)
     return result
-
-
-def _summarize_relationship_counts(
-    final_df: pd.DataFrame,
-    *,
-    plv_type: str,
-    relationship_column: str,
-    relationship_labels: dict[str, str],
-    count_column_name: str,
-) -> pd.DataFrame:
-    if relationship_column not in final_df.columns:
-        raise ValueError(
-            f"{relationship_column!r} is missing from the final dataframe; run add_cost_benefit_columns() first."
-        )
-
-    summary = (
-        final_df.groupby(relationship_column, dropna=False)
-        .size()
-        .rename(count_column_name)
-        .reindex(list(relationship_labels.keys()), fill_value=0)
-        .rename_axis(COLUMN_NAMES['relationship_code'])
-        .reset_index()
-    )
-    summary[COLUMN_NAMES['plv_type']] = plv_type
-    summary[f"{count_column_name} Description"] = summary[COLUMN_NAMES['relationship_code']].map(relationship_labels)
-    return summary
-
-
-def _summarize_relationships(final_df: pd.DataFrame) -> pd.DataFrame:
-    summaries = []
-    for variant in _plv_variant_specs():
-        plv_type = str(variant["plv_type"])
-        net_relationship_column = f"Physical vs {plv_type} Net Benefit Relationship"
-        bpd_relationship_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
-        net_relationship_labels = _plv_relationship_labels(plv_type, "net_benefit")
-        bpd_relationship_labels = _plv_relationship_labels(plv_type, "benefit_per_dollar")
-
-        net_benefit_summary = _summarize_relationship_counts(
-            final_df,
-            plv_type=plv_type,
-            relationship_column=net_relationship_column,
-            relationship_labels=net_relationship_labels,
-            count_column_name="Net Benefit Scenario Count",
-        )
-        benefit_per_dollar_summary = _summarize_relationship_counts(
-            final_df,
-            plv_type=plv_type,
-            relationship_column=bpd_relationship_column,
-            relationship_labels=bpd_relationship_labels,
-            count_column_name="Benefit Per Dollar Scenario Count",
-        )
-
-        summary = net_benefit_summary.merge(
-            benefit_per_dollar_summary[
-                [
-                    COLUMN_NAMES['plv_type'],
-                    COLUMN_NAMES['relationship_code'],
-                    COLUMN_NAMES['benefit_per_dollar_scenario_count'],
-                ]
-            ],
-            on=[COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code']],
-            how="outer",
-            validate="one_to_one",
-        )
-        summary[COLUMN_NAMES['net_benefit_relationship_description']] = summary[COLUMN_NAMES['relationship_code']].map(
-            net_relationship_labels
-        )
-        summary[COLUMN_NAMES['benefit_per_dollar_relationship_description']] = summary[COLUMN_NAMES['relationship_code']].map(
-            bpd_relationship_labels
-        )
-        summary[COLUMN_NAMES['net_benefit_scenario_count']] = summary[COLUMN_NAMES['net_benefit_scenario_count']].fillna(0).astype(int)
-        summary[COLUMN_NAMES['benefit_per_dollar_scenario_count']] = summary[COLUMN_NAMES['benefit_per_dollar_scenario_count']].fillna(0).astype(int)
-        summary = summary[
-            [
-                COLUMN_NAMES['plv_type'],
-                COLUMN_NAMES['relationship_code'],
-                COLUMN_NAMES['net_benefit_relationship_description'],
-                COLUMN_NAMES['benefit_per_dollar_relationship_description'],
-                COLUMN_NAMES['net_benefit_scenario_count'],
-                COLUMN_NAMES['benefit_per_dollar_scenario_count'],
-            ]
-        ]
-        total_row = pd.DataFrame(
-            {
-                COLUMN_NAMES['plv_type']: [plv_type],
-                COLUMN_NAMES['relationship_code']: ["Total"],
-                COLUMN_NAMES['net_benefit_relationship_description']: ["All scenarios"],
-                COLUMN_NAMES['benefit_per_dollar_relationship_description']: ["All scenarios"],
-                COLUMN_NAMES['net_benefit_scenario_count']: [int(len(final_df))],
-                COLUMN_NAMES['benefit_per_dollar_scenario_count']: [int(len(final_df))],
-            }
-        )
-        summaries.append(pd.concat([summary, total_row], ignore_index=True))
-
-    result = pd.concat(summaries, ignore_index=True)
-    result[COLUMN_NAMES['plv_type']] = pd.Categorical(result[COLUMN_NAMES['plv_type']], categories=PLV_VARIANT_ORDER, ordered=True)
-    return result.sort_values([COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code']]).reset_index(drop=True)
 
 
 def _summarize_relationships_from_parquet(
@@ -1417,29 +1334,6 @@ def _render_relationship_boxplot_images(
         print(f"Wrote relationship boxplot image to {output_path}")
 
     return saved_paths
-
-
-def _write_relationship_boxplot_images_from_dataframe(
-    boxplot_df: pd.DataFrame,
-    output_images_dir: Path,
-) -> list[Path]:
-    group_columns = [
-        COLUMN_NAMES['metric_family'],
-        COLUMN_NAMES['plv_type'],
-        COLUMN_NAMES['relationship_code'],
-        COLUMN_NAMES['relationship_description'],
-        COLUMN_NAMES['scenario_group'],
-        COLUMN_NAMES['scenario_variant'],
-        COLUMN_NAMES['scenario_type'],
-    ]
-    grouped_values: dict[tuple[object, ...], list[float]] = {}
-    if boxplot_df.empty:
-        return []
-
-    grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
-    for group_key, values in grouped:
-        grouped_values[tuple(group_key)] = values.tolist()
-    return _render_relationship_boxplot_images(grouped_values, output_images_dir)
 
 
 def _write_relationship_boxplot_values_from_parquet(
@@ -1874,54 +1768,6 @@ def _final_scenario_component_arrow_schema(pa):
     )
 
 
-def _costed_parquet_is_current_version(costed_parquet_path: Path, pq) -> bool:
-    expected_columns = [
-        COLUMN_NAMES['mix_id'],
-        COLUMN_NAMES['scenario_id'],
-        COLUMN_NAMES['mix_description'],
-        COLUMN_NAMES['total_clusters_in_mix'],
-        COLUMN_NAMES['scenario_component_count'],
-        COLUMN_NAMES['k_combo'],
-        COLUMN_NAMES['n_combo'],
-        COLUMN_NAMES['total_tests'],
-        COLUMN_NAMES['total_component_chips'],
-        COLUMN_NAMES['bad_records'],
-        COLUMN_NAMES['number_of_clusters_with_smuggling'],
-        COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
-        COLUMN_NAMES['plv_total_diverted_chips_identified'],
-        COLUMN_NAMES['share_diverted'],
-        "Physical Inspection - Min Total Cost",
-        "Physical Inspection - Max Total Cost",
-        "Physical - Min Net Benefit",
-        "Physical - Max Net Benefit",
-        "Physical - Min Benefit Per Dollar",
-        "Physical - Max Benefit Per Dollar",
-        "PLV Renting - Total Diverted Chips Identified",
-        "PLV Renting - Min Total Cost",
-        "PLV Renting - Max Total Cost",
-        "PLV Renting - Min Net Benefit",
-        "PLV Renting - Max Net Benefit",
-        "PLV Renting - Min Benefit Per Dollar",
-        "PLV Renting - Max Benefit Per Dollar",
-        "PLV Owning - Total Diverted Chips Identified",
-        "PLV Owning - Min Total Cost",
-        "PLV Owning - Max Total Cost",
-        "PLV Owning - Min Net Benefit",
-        "PLV Owning - Max Net Benefit",
-        "PLV Owning - Min Benefit Per Dollar",
-        "PLV Owning - Max Benefit Per Dollar",
-        "Physical vs PLV Renting Net Benefit Relationship",
-        "Physical vs PLV Renting Benefit Per Dollar Relationship",
-        "Physical vs PLV Owning Net Benefit Relationship",
-        "Physical vs PLV Owning Benefit Per Dollar Relationship",
-    ]
-    try:
-        parquet_file = pq.ParquetFile(costed_parquet_path)
-    except Exception:
-        return False
-    return list(parquet_file.schema.names) == expected_columns
-
-
 def _add_plv_variant_cost_benefit_columns(
     result: pd.DataFrame,
     *,
@@ -2066,71 +1912,51 @@ def run_inspection_costs_workflow(
     start_time = time.perf_counter()
 
     print("Starting inspection costs workflow")
-    pq, _pa = _import_pyarrow_parquet()
-    if scenarios_costed_path.exists() and _costed_parquet_is_current_version(scenarios_costed_path, pq):
-        print(f"Loading cached costed scenarios from {scenarios_costed_path}")
-        final_df = None
-        print(f"Generating relationship summary at {relationship_summary_path}")
-        relationship_summary_df = _summarize_relationships_from_parquet(scenarios_costed_path)
-        relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Writing relationship summary CSV to {relationship_summary_path}")
-        relationship_summary_df.to_csv(relationship_summary_path, index=False)
+    print(f"Ensuring detection lookup table exists at {DETECTION_LOOKUP_TABLE_PARQUET_PATH}")
+    detection_lookup_table = build_detection_lookup_table(
+        cluster_sizes=cluster_sizes,
+        K_vals=k_vals,
+        n_vals=n_vals,
+        m_vals=ALL_M_VALS,
+    )
+    _overview_dataframe("Detection lookup table", detection_lookup_table)
 
-        print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
-        relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
-            scenarios_costed_path,
-            relationship_boxplot_values_path,
-            relationship_boxplot_images_path,
+    if not scenarios_combined_path.exists():
+        print(f"Scenario-component combined parquet is missing; building {scenarios_combined_path}")
+        print("Building scenario-component rows")
+        scenario_component_df = build_scenarios(
+            cluster_sizes=cluster_sizes,
+            detection_lookup_table=detection_lookup_table,
+            k_vals=k_vals,
+            physical_m_vals=physical_m_vals,
+            plv_m_vals=plv_m_vals,
+            target_chips=target_chips,
+            steps=steps,
+            return_dataframe=True,
+        )
+        _overview_dataframe("Scenario-component rows", scenario_component_df)
+
+        scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving scenario-component rows to {scenarios_combined_path}")
+        scenario_component_df.to_parquet(
+            scenarios_combined_path,
+            index=False,
+            compression=PARQUET_COMPRESSION,
         )
 
-        relationship_model_text = write_relationship_code_model_report(
-            scenarios_costed_path,
-            relationship_model_text_path,
-        )
-    else:
-        if scenarios_costed_path.exists():
-            print(f"Cached costed scenarios at {scenarios_costed_path} are stale; regenerating outputs")
-        if not scenarios_combined_path.exists():
-            print(f"Building detection lookup table for {len(cluster_sizes)} cluster sizes")
-            detection_lookup_table = build_detection_lookup_table(
-                cluster_sizes=cluster_sizes,
-                K_vals=k_vals,
-                n_vals=n_vals,
-                m_vals=ALL_M_VALS,
-            )
-            print(f"Detection lookup table rows: {len(detection_lookup_table)}")
+    _overview_parquet_dataset(Path(SCENARIOS_PARQUET_PATH), "Scenario-component parquet dataset")
+    _overview_parquet_file(scenarios_combined_path, "Combined scenario-component parquet")
 
-            print("Building scenario-component rows")
-            scenario_component_df = build_scenarios(
-                cluster_sizes=cluster_sizes,
-                detection_lookup_table=detection_lookup_table,
-                k_vals=k_vals,
-                physical_m_vals=physical_m_vals,
-                plv_m_vals=plv_m_vals,
-                target_chips=target_chips,
-                steps=steps,
-                return_dataframe=True,
-            )
-            print(f"Scenario-component rows: {len(scenario_component_df)}")
-            print(scenario_component_df.head())
-
-            scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"Saving scenario-component rows to {scenarios_combined_path}")
-            scenario_component_df.to_parquet(
-                scenarios_combined_path,
-                index=False,
-                compression=PARQUET_COMPRESSION,
-            )
-        else:
-            print(f"Loading cached scenario-component rows from {scenarios_combined_path}")
-            scenario_component_df = pd.read_parquet(scenarios_combined_path)
-
+    if not scenarios_costed_path.exists():
+        print(f"Costed scenarios parquet is missing; building {scenarios_costed_path}")
         if scenario_component_df is None:
-            raise ValueError("scenario_component_df is required when costed scenarios are not cached")
+            print(f"Loading scenario-component rows from {scenarios_combined_path}")
+            scenario_component_df = pd.read_parquet(scenarios_combined_path)
+        if scenario_component_df is None:
+            raise ValueError("scenario_component_df is required when costed scenarios are not saved")
         print("Aggregating scenario-component rows to scenario level")
         scenario_df = _derive_scenario_summary_from_components(scenario_component_df)
-        print(f"Scenario rows: {len(scenario_df)}")
-        print(scenario_df.head())
+        _overview_dataframe("Scenario-level rows", scenario_df)
         print("Adding cost and benefit columns")
         final_df = add_cost_benefit_columns(
             scenario_df,
@@ -2143,26 +1969,29 @@ def run_inspection_costs_workflow(
         print(f"Saving final scenarios to {scenarios_costed_path}")
         final_df.to_parquet(scenarios_costed_path, index=False, compression=PARQUET_COMPRESSION)
 
-        relationship_summary_df = _summarize_relationships(final_df)
-        relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Writing relationship summary CSV to {relationship_summary_path}")
-        relationship_summary_df.to_csv(relationship_summary_path, index=False)
+    _overview_parquet_file(scenarios_costed_path, "Costed scenarios parquet")
 
-        print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
-        relationship_boxplot_rows_df = _build_relationship_boxplot_dataframe(final_df)
-        relationship_boxplot_df = _summarize_relationship_boxplot_dataframe(relationship_boxplot_rows_df)
-        relationship_boxplot_values_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Writing relationship boxplot CSV to {relationship_boxplot_values_path}")
-        relationship_boxplot_df.to_csv(relationship_boxplot_values_path, index=False)
-        _write_relationship_boxplot_images_from_dataframe(
-            relationship_boxplot_rows_df,
-            relationship_boxplot_images_path,
-        )
+    print(f"Generating relationship summary at {relationship_summary_path}")
+    relationship_summary_df = _summarize_relationships_from_parquet(scenarios_costed_path)
+    relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Writing relationship summary CSV to {relationship_summary_path}")
+    relationship_summary_df.to_csv(relationship_summary_path, index=False)
+    _overview_dataframe("Relationship summary", relationship_summary_df)
 
-        relationship_model_text = write_relationship_code_model_report(
-            scenarios_costed_path,
-            relationship_model_text_path,
-        )
+    print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
+    relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
+        scenarios_costed_path,
+        relationship_boxplot_values_path,
+        relationship_boxplot_images_path,
+    )
+    _overview_dataframe("Relationship boxplot values", relationship_boxplot_df)
+
+    relationship_model_text = write_relationship_code_model_report(
+        scenarios_costed_path,
+        relationship_model_text_path,
+    )
+    _overview_csv_file(relationship_summary_path, "Relationship summary CSV")
+    _overview_csv_file(relationship_boxplot_values_path, "Relationship boxplot values CSV")
     elapsed_seconds = time.perf_counter() - start_time
     print(f"Inspection costs workflow complete in {elapsed_seconds:.2f} seconds")
     return {
