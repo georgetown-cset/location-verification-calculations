@@ -25,7 +25,7 @@ DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of dete
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (8.3, 48.8)
 PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2545, 5900)
 PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS) # 12 - 500 landmark servers
-PLV_OWNING_COST_PER_TOTAL_CHIP = (4_503_376 / TARGET_CHIPS, 144_854_400 / TARGET_CHIPS) # Illustrative: same benefit, higher ownership cost
+PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS) # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 MIN_SHARE_DIVERTED = 0.1 # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
