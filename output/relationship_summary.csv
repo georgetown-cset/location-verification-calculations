@@ -1,8 +1,15 @@
-Relationship Code,Net Benefit Relationship Description,Benefit Per Dollar Relationship Description,Net Benefit Scenario Count,Benefit Per Dollar Scenario Count
-a,Physical max net benefit is less than PLV min net benefit,Physical max benefit per dollar is less than PLV min benefit per dollar,38474,3081746
-b,Physical max net benefit is within PLV net benefit range and Physical min net benefit is below PLV min net benefit,Physical max benefit per dollar is within PLV range and Physical min benefit per dollar is below PLV min benefit per dollar,759018,110554
-c,Physical min and max net benefits are both within PLV net benefit range,Physical min and max benefit per dollar are both within PLV range,4694,113335
-d,Physical min net benefit is within PLV net benefit range and Physical max net benefit is above PLV max net benefit,Physical min benefit per dollar is within PLV range and Physical max benefit per dollar is above PLV max benefit per dollar,177216,3874
-e,Physical min net benefit is greater than PLV max net benefit,Physical min benefit per dollar is greater than PLV max benefit per dollar,0,295
-f,Physical net benefit range spans both sides of PLV net benefit range,Physical benefit per dollar range spans both sides of PLV range,2330402,0
-Total,All scenarios,All scenarios,3309804,3309804
+PLV Type,Relationship Code,Net Benefit Relationship Description,Benefit Per Dollar Relationship Description,Net Benefit Scenario Count,Benefit Per Dollar Scenario Count
+PLV Renting,Total,All scenarios,All scenarios,3309804,3309804
+PLV Renting,a,Physical max net benefit is less than PLV Renting min net benefit,Physical max benefit per dollar is less than PLV Renting min benefit per dollar,38474,3081746
+PLV Renting,b,Physical max net benefit is within PLV Renting net benefit range and Physical min net benefit is below PLV Renting min net benefit,Physical max benefit per dollar is within PLV Renting range and Physical min benefit per dollar is below PLV Renting min benefit per dollar,759018,110554
+PLV Renting,c,Physical min and max net benefits are both within PLV Renting net benefit range,Physical min and max benefit per dollar are both within PLV Renting range,4694,113335
+PLV Renting,d,Physical min net benefit is within PLV Renting net benefit range and Physical max net benefit is above PLV Renting max net benefit,Physical min benefit per dollar is within PLV Renting range and Physical max benefit per dollar is above PLV Renting max benefit per dollar,177216,3874
+PLV Renting,e,Physical min net benefit is greater than PLV Renting max net benefit,Physical min benefit per dollar is greater than PLV Renting max benefit per dollar,0,295
+PLV Renting,f,Physical net benefit range spans both sides of PLV Renting net benefit range,Physical benefit per dollar range spans both sides of PLV Renting range,2330402,0
+PLV Owning,Total,All scenarios,All scenarios,3309804,3309804
+PLV Owning,a,Physical max net benefit is less than PLV Owning min net benefit,Physical max benefit per dollar is less than PLV Owning min benefit per dollar,42309,3174720
+PLV Owning,b,Physical max net benefit is within PLV Owning net benefit range and Physical min net benefit is below PLV Owning min net benefit,Physical max benefit per dollar is within PLV Owning range and Physical min benefit per dollar is below PLV Owning min benefit per dollar,759298,104788
+PLV Owning,c,Physical min and max net benefits are both within PLV Owning net benefit range,Physical min and max benefit per dollar are both within PLV Owning range,496,24824
+PLV Owning,d,Physical min net benefit is within PLV Owning net benefit range and Physical max net benefit is above PLV Owning max net benefit,Physical min benefit per dollar is within PLV Owning range and Physical max benefit per dollar is above PLV Owning max benefit per dollar,142789,4599
+PLV Owning,e,Physical min net benefit is greater than PLV Owning max net benefit,Physical min benefit per dollar is greater than PLV Owning max benefit per dollar,0,873
+PLV Owning,f,Physical net benefit range spans both sides of PLV Owning net benefit range,Physical benefit per dollar range spans both sides of PLV Owning range,2364912,0
