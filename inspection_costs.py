@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 
-TARGET_CHIPS = 10_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
+TARGET_CHIPS = 3_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
 SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25 # Share of clusters in a scenario component that are assumed to contain smuggling. This imposes an upper bound on the number of clusters with smuggling in a scenario component.
 NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
 DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of detecting a diverted chip, which is used to convert net benefit estimates from chip counts to dollars
@@ -28,13 +28,18 @@ PLV_COST_PER_TOTAL_CHIP = (2_251_688/TARGET_CHIPS, 72_427_200/TARGET_CHIPS) # 12
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 MIN_SHARE_DIVERTED = 0.1 # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
-MIX_STEPS = np.arange(0, 1.05, 0.05)
+MIX_STEP_SIZE = 0.10
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
-N_VALS = [1, 10, 100, 1000] # Number of tests conducted on a cluster
+N_VALS = [0, 1, 10, 100, 1000] # Number of tests conducted on a cluster
 PHYSICAL_INSPECTION_M_VALS = [0.05] # Probability that a diverted chip is not detected by a physical inspection test (i.e., the "miss" probability)
 PLV_M_VALS = [0.1] # Probability that a diverted chip is not detected by a PLV test (i.e., the "miss" probability)
 
+MIX_STEPS = np.linspace(
+    0.0,
+    1.0,
+    int(round(1.0 / MIX_STEP_SIZE)) + 1,
+)
 ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
 OUTPUT_DIR = "output"
 DATA_SAVED_DIR = "data/saved"
