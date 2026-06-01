@@ -6,6 +6,7 @@ import time
 from collections import Counter
 from fractions import Fraction
 from pathlib import Path
+import shutil
 from typing import Iterable, Optional
 
 import matplotlib
@@ -29,7 +30,7 @@ PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 MIN_SHARE_DIVERTED = 0.1 # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
-MIX_STEP_SIZE = 0.2
+MIX_STEP_SIZE = 0.1
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
 N_VALS = [0, 1, 10, 100, 1000] # Number of tests conducted on a cluster
@@ -807,6 +808,24 @@ def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
     for existing_path in mix_dir.rglob(f"{fragment_stem}*.parquet"):
         if existing_path.is_file():
             existing_path.unlink()
+
+
+def _clear_directory(path: Path) -> None:
+    if not path.exists():
+        return
+    if path.is_file():
+        path.unlink()
+        return
+    shutil.rmtree(path)
+
+
+def _reset_workflow_artifacts() -> None:
+    for path in (
+        Path(DATA_SAVED_DIR),
+        Path(SCENARIOS_PARQUET_PATH),
+        Path(OUTPUT_DIR),
+    ):
+        _clear_directory(path)
 
 
 def _empty_arrow_table(pa, schema):
@@ -1912,6 +1931,8 @@ def run_inspection_costs_workflow(
     start_time = time.perf_counter()
 
     print("Starting inspection costs workflow")
+    print("Clearing prior workflow artifacts from data and output directories")
+    _reset_workflow_artifacts()
     print(f"Ensuring detection lookup table exists at {DETECTION_LOOKUP_TABLE_PARQUET_PATH}")
     detection_lookup_table = build_detection_lookup_table(
         cluster_sizes=cluster_sizes,
