@@ -20,7 +20,7 @@ PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_
 PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV benefits.
 MIN_SHARE_DIVERTED = 0.1  # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
-MIX_STEP_SIZE = 0.1
+MIX_STEP_SIZE = 0.2
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
 N_VALS = [0, 1, 10, 100, 1000]  # Tests conducted on a cluster.
@@ -225,27 +225,6 @@ RELATIONSHIP_MODEL_FEATURE_COLUMNS = [
     "plv_cost_spread_per_chip",
 ]
 
-from inspection_costs_stage1 import (
-    _overview_csv_file,
-    _overview_dataframe,
-    _overview_parquet_dataset,
-    _overview_parquet_file,
-    _reset_workflow_artifacts,
-    build_detection_lookup_table,
-    build_scenarios,
-)
-from inspection_costs_stage2 import (
-    _derive_scenario_summary_from_components,
-    add_cost_benefit_columns,
-    filter_perfect_information_scenarios,
-)
-from inspection_costs_stage3 import (
-    _summarize_relationships_from_parquet,
-    _write_relationship_boxplot_values_from_parquet,
-    write_relationship_code_model_report,
-)
-
-
 def _write_relationship_outputs(
     *,
     parquet_path: Path,
@@ -255,6 +234,13 @@ def _write_relationship_outputs(
     model_text_path: Path,
     label: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+    from inspection_costs_stage1 import _overview_csv_file, _overview_dataframe
+    from inspection_costs_stage3 import (
+        _summarize_relationships_from_parquet,
+        _write_relationship_boxplot_values_from_parquet,
+        write_relationship_code_model_report,
+    )
+
     print(f"Generating {label} relationship summary at {summary_path}")
     relationship_summary_df = _summarize_relationships_from_parquet(parquet_path)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -293,6 +279,20 @@ def run_inspection_costs_workflow(
     plv_renting_cost_per_total_chip: tuple[float, float] = PLV_RENTING_COST_PER_TOTAL_CHIP,
     plv_owning_cost_per_total_chip: tuple[float, float] = PLV_OWNING_COST_PER_TOTAL_CHIP,
 ) -> dict[str, object]:
+    from inspection_costs_stage1 import (
+        _overview_dataframe,
+        _overview_parquet_dataset,
+        _overview_parquet_file,
+        _reset_workflow_artifacts,
+        build_detection_lookup_table,
+        build_scenarios,
+    )
+    from inspection_costs_stage2 import (
+        _derive_scenario_summary_from_components,
+        add_cost_benefit_columns,
+        filter_perfect_information_scenarios,
+    )
+
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
     n_vals = list(n_vals)
