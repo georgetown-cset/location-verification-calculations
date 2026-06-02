@@ -87,6 +87,12 @@ def _summarize_relationships_from_parquet(
 
     result = pd.concat(summaries, ignore_index=True)
     result[COLUMN_NAMES['plv_type']] = pd.Categorical(result[COLUMN_NAMES['plv_type']], categories=PLV_VARIANT_ORDER, ordered=True)
+    relationship_sort_order = RELATIONSHIP_CODE_ORDER + ["Total"]
+    result[COLUMN_NAMES['relationship_code']] = pd.Categorical(
+        result[COLUMN_NAMES['relationship_code']],
+        categories=relationship_sort_order,
+        ordered=True,
+    )
     return result.sort_values([COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code']]).reset_index(drop=True)
 
 
