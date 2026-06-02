@@ -62,33 +62,25 @@ def _build_relationship_rule_frame(
     ].groupby(COLUMN_NAMES['scenario_id'], sort=False, observed=True).agg(
         component_cluster_size_min=(COLUMN_NAMES['cluster_size'], "min"),
         component_cluster_size_max=(COLUMN_NAMES['cluster_size'], "max"),
-        component_cluster_size_mean=(COLUMN_NAMES['cluster_size'], "mean"),
         component_cluster_count_min=(COLUMN_NAMES['number_of_clusters'], "min"),
         component_cluster_count_max=(COLUMN_NAMES['number_of_clusters'], "max"),
-        component_cluster_count_mean=(COLUMN_NAMES['number_of_clusters'], "mean"),
         component_k_min=(COLUMN_NAMES['bad_records'], "min"),
         component_k_max=(COLUMN_NAMES['bad_records'], "max"),
-        component_k_sum=(COLUMN_NAMES['bad_records'], "sum"),
         component_n_min=(COLUMN_NAMES['tests'], "min"),
         component_n_max=(COLUMN_NAMES['tests'], "max"),
-        component_n_sum=(COLUMN_NAMES['tests'], "sum"),
     ).reset_index()
     source_df = source_df.merge(component_summary, on=COLUMN_NAMES['scenario_id'], how='left')
 
     source_df["K Combo Min"] = source_df["component_k_min"]
     source_df["K Combo Max"] = source_df["component_k_max"]
-    source_df["K Combo Sum"] = source_df["component_k_sum"]
     source_df["N Combo Min"] = source_df["component_n_min"]
     source_df["N Combo Max"] = source_df["component_n_max"]
-    source_df["N Combo Sum"] = source_df["component_n_sum"]
     source_df = source_df.drop(
         columns=[
             "component_k_min",
             "component_k_max",
-            "component_k_sum",
             "component_n_min",
             "component_n_max",
-            "component_n_sum",
         ]
     )
 
@@ -114,18 +106,19 @@ def _summarize_relationship_rule_bounds(
         COLUMN_NAMES['plv_chip_level_miss_prob']: "Scenario Summary",
         "K Combo Min": "Combo Derived",
         "K Combo Max": "Combo Derived",
-        "K Combo Sum": "Combo Derived",
         "N Combo Min": "Combo Derived",
         "N Combo Max": "Combo Derived",
-        "N Combo Sum": "Combo Derived",
         "component_cluster_size_min": "Component Summary",
         "component_cluster_size_max": "Component Summary",
-        "component_cluster_size_mean": "Component Summary",
         "component_cluster_count_min": "Component Summary",
         "component_cluster_count_max": "Component Summary",
-        "component_cluster_count_mean": "Component Summary",
     }
-    feature_columns = list(feature_groups)
+    feature_columns = [
+        feature_name
+        for feature_name in feature_groups
+        if feature_name in source_df.columns
+        and pd.to_numeric(source_df[feature_name], errors="coerce").dropna().nunique() > 1
+    ]
     rows: list[dict[str, object]] = []
 
     relationship_values = source_df[relationship_code_column].astype(str)
@@ -147,10 +140,7 @@ def _summarize_relationship_rule_bounds(
             observed_max = values.max()
             lower_text = _format_rule_value(observed_min)
             upper_text = _format_rule_value(observed_max)
-            if lower_text == upper_text:
-                rule_text = f"{feature_name} = {lower_text}"
-            else:
-                rule_text = f"{lower_text} <= {feature_name} <= {upper_text}"
+            rule_text = f"{lower_text} <= {feature_name} <= {upper_text}"
 
             rows.append(
                 {
