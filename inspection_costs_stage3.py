@@ -29,6 +29,218 @@ from inspection_costs_stage1 import (
     _iter_parquet_batches,
 )
 
+def _parse_combo_values(combo_value: object) -> list[int]:
+    if pd.isna(combo_value):
+        return []
+    combo_text = str(combo_value).strip()
+    if not combo_text:
+        return []
+    try:
+        return [int(part) for part in combo_text.split("-") if part]
+    except ValueError as exc:
+        raise ValueError(f"Unable to parse combo value {combo_value!r} into integers") from exc
+
+
+def _format_rule_value(value: object) -> str:
+    if pd.isna(value):
+        return "NA"
+    if isinstance(value, (np.integer, int)):
+        return str(int(value))
+    if isinstance(value, (np.floating, float)):
+        numeric_value = float(value)
+        if np.isfinite(numeric_value) and numeric_value.is_integer():
+            return str(int(round(numeric_value)))
+        return f"{numeric_value:.6g}"
+    return str(value)
+
+
+def _build_relationship_rule_frame(
+    scenario_df: pd.DataFrame,
+    scenario_component_df: pd.DataFrame,
+) -> pd.DataFrame:
+    if scenario_df.empty:
+        return scenario_df.copy()
+
+    source_df = scenario_df.copy()
+    component_summary = scenario_component_df.loc[
+        :,
+        [
+            COLUMN_NAMES['scenario_id'],
+            COLUMN_NAMES['cluster_size'],
+            COLUMN_NAMES['number_of_clusters'],
+        ],
+    ].groupby(COLUMN_NAMES['scenario_id'], sort=False, observed=True).agg(
+        component_cluster_size_min=(COLUMN_NAMES['cluster_size'], "min"),
+        component_cluster_size_max=(COLUMN_NAMES['cluster_size'], "max"),
+        component_cluster_size_mean=(COLUMN_NAMES['cluster_size'], "mean"),
+        component_cluster_count_min=(COLUMN_NAMES['number_of_clusters'], "min"),
+        component_cluster_count_max=(COLUMN_NAMES['number_of_clusters'], "max"),
+        component_cluster_count_mean=(COLUMN_NAMES['number_of_clusters'], "mean"),
+    ).reset_index()
+    source_df = source_df.merge(component_summary, on=COLUMN_NAMES['scenario_id'], how='left')
+
+    k_values = source_df[COLUMN_NAMES['k_combo']].map(_parse_combo_values)
+    n_values = source_df[COLUMN_NAMES['n_combo']].map(_parse_combo_values)
+    source_df["K Combo Min"] = k_values.map(lambda values: float(min(values)) if values else np.nan)
+    source_df["K Combo Max"] = k_values.map(lambda values: float(max(values)) if values else np.nan)
+    source_df["K Combo Sum"] = k_values.map(lambda values: float(sum(values)) if values else np.nan)
+    source_df["N Combo Min"] = n_values.map(lambda values: float(min(values)) if values else np.nan)
+    source_df["N Combo Max"] = n_values.map(lambda values: float(max(values)) if values else np.nan)
+    source_df["N Combo Sum"] = n_values.map(lambda values: float(sum(values)) if values else np.nan)
+
+    return source_df
+
+
+def _summarize_relationship_rule_bounds(
+    source_df: pd.DataFrame,
+    *,
+    relationship_code_column: str,
+    plv_type: str,
+) -> pd.DataFrame:
+    relationship_labels = _plv_relationship_labels(plv_type)
+    feature_groups = {
+        COLUMN_NAMES['scenario_component_count']: "Scenario Summary",
+        COLUMN_NAMES['total_clusters_in_mix']: "Scenario Summary",
+        COLUMN_NAMES['total_tests']: "Scenario Summary",
+        COLUMN_NAMES['total_component_chips']: "Scenario Summary",
+        COLUMN_NAMES['bad_records']: "Scenario Summary",
+        COLUMN_NAMES['number_of_clusters_with_smuggling']: "Scenario Summary",
+        COLUMN_NAMES['share_diverted']: "Scenario Summary",
+        COLUMN_NAMES['physical_inspection_chip_level_miss_prob']: "Scenario Summary",
+        COLUMN_NAMES['plv_chip_level_miss_prob']: "Scenario Summary",
+        "K Combo Min": "Combo Derived",
+        "K Combo Max": "Combo Derived",
+        "K Combo Sum": "Combo Derived",
+        "N Combo Min": "Combo Derived",
+        "N Combo Max": "Combo Derived",
+        "N Combo Sum": "Combo Derived",
+        "component_cluster_size_min": "Component Summary",
+        "component_cluster_size_max": "Component Summary",
+        "component_cluster_size_mean": "Component Summary",
+        "component_cluster_count_min": "Component Summary",
+        "component_cluster_count_max": "Component Summary",
+        "component_cluster_count_mean": "Component Summary",
+    }
+    feature_columns = list(feature_groups)
+    rows: list[dict[str, object]] = []
+
+    relationship_values = source_df[relationship_code_column].astype(str)
+    for relationship_code in RELATIONSHIP_CODE_ORDER:
+        code_mask = relationship_values == relationship_code
+        code_df = source_df.loc[code_mask]
+        if code_df.empty:
+            continue
+
+        scenario_count = int(len(code_df))
+        for feature_name in feature_columns:
+            if feature_name not in code_df.columns:
+                continue
+            values = pd.to_numeric(code_df[feature_name], errors="coerce").dropna()
+            if values.empty:
+                continue
+
+            observed_min = values.min()
+            observed_max = values.max()
+            lower_text = _format_rule_value(observed_min)
+            upper_text = _format_rule_value(observed_max)
+            if lower_text == upper_text:
+                rule_text = f"{feature_name} = {lower_text}"
+            else:
+                rule_text = f"{lower_text} <= {feature_name} <= {upper_text}"
+
+            rows.append(
+                {
+                    COLUMN_NAMES['plv_type']: plv_type,
+                    COLUMN_NAMES['relationship_code']: relationship_code,
+                    COLUMN_NAMES['relationship_description']: relationship_labels[relationship_code],
+                    "Feature Group": feature_groups[feature_name],
+                    "Feature": feature_name,
+                    COLUMN_NAMES['scenario_count']: scenario_count,
+                    "Distinct Values": int(values.nunique(dropna=True)),
+                    "Observed Min": float(observed_min),
+                    "Observed Max": float(observed_max),
+                    "Rule": rule_text,
+                }
+            )
+
+    result = pd.DataFrame(rows)
+    if result.empty:
+        return pd.DataFrame(
+            columns=[
+                COLUMN_NAMES['plv_type'],
+                COLUMN_NAMES['relationship_code'],
+                COLUMN_NAMES['relationship_description'],
+                "Feature Group",
+                "Feature",
+                COLUMN_NAMES['scenario_count'],
+                "Distinct Values",
+                "Observed Min",
+                "Observed Max",
+                "Rule",
+            ]
+        )
+
+    result[COLUMN_NAMES['plv_type']] = pd.Categorical(result[COLUMN_NAMES['plv_type']], categories=PLV_VARIANT_ORDER, ordered=True)
+    result[COLUMN_NAMES['relationship_code']] = pd.Categorical(
+        result[COLUMN_NAMES['relationship_code']],
+        categories=RELATIONSHIP_CODE_ORDER,
+        ordered=True,
+    )
+    result = result.sort_values(
+        [COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code'], "Feature Group", "Feature"],
+        kind="mergesort",
+    ).reset_index(drop=True)
+    return result
+
+
+def _write_relationship_code_rules_from_dataframes(
+    *,
+    scenario_df: pd.DataFrame,
+    scenario_component_df: pd.DataFrame,
+    output_csv_path: Path,
+    label: str,
+) -> pd.DataFrame:
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    if scenario_df.empty:
+        empty_df = pd.DataFrame(
+            columns=[
+                COLUMN_NAMES['plv_type'],
+                COLUMN_NAMES['relationship_code'],
+                COLUMN_NAMES['relationship_description'],
+                "Feature Group",
+                "Feature",
+                COLUMN_NAMES['scenario_count'],
+                "Distinct Values",
+                "Observed Min",
+                "Observed Max",
+                "Rule",
+            ]
+        )
+        empty_df.to_csv(output_csv_path, index=False)
+        print(f"Wrote empty relationship rule summary for {label} to {output_csv_path}")
+        return empty_df
+
+    rule_source_df = _build_relationship_rule_frame(scenario_df, scenario_component_df)
+    summary_frames: list[pd.DataFrame] = []
+    for variant in _plv_variant_specs():
+        plv_type = str(variant["plv_type"])
+        relationship_code_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
+        if relationship_code_column not in rule_source_df.columns:
+            continue
+        summary_frames.append(
+            _summarize_relationship_rule_bounds(
+                rule_source_df,
+                relationship_code_column=relationship_code_column,
+                plv_type=plv_type,
+            )
+        )
+
+    result = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
+    print(f"Writing relationship code rules CSV to {output_csv_path}")
+    result.to_csv(output_csv_path, index=False)
+    return result
+
+
 def _summarize_relationships_from_parquet(
     parquet_path: Path,
     batch_size: int = 65_536,

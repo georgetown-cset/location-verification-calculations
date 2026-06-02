@@ -45,10 +45,12 @@ SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
 SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed_perfect_information.parquet"
 RELATIONSHIP_SUMMARY_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_boxplot_values.csv"
+RELATIONSHIP_RULES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_rules.csv"
 RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{ALL_OUTPUT_DIR}/images"
 RELATIONSHIP_MODEL_TEXT_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_model.txt"
 PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_summary.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_boxplot_values.csv"
+PERFECT_INFORMATION_RELATIONSHIP_RULES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_rules.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUTPUT_DIR}/images"
 PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_model.txt"
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
@@ -266,6 +268,28 @@ def _write_relationship_outputs(
     return relationship_summary_df, relationship_boxplot_df, relationship_model_text
 
 
+def _write_relationship_code_rules(
+    *,
+    scenario_df: pd.DataFrame,
+    scenario_component_df: pd.DataFrame,
+    output_csv_path: Path,
+    label: str,
+) -> pd.DataFrame:
+    from inspection_costs_stage1 import _overview_csv_file, _overview_dataframe
+    from inspection_costs_stage3 import _write_relationship_code_rules_from_dataframes
+
+    print(f"Generating {label} relationship code rules at {output_csv_path}")
+    relationship_rules_df = _write_relationship_code_rules_from_dataframes(
+        scenario_df=scenario_df,
+        scenario_component_df=scenario_component_df,
+        output_csv_path=output_csv_path,
+        label=label,
+    )
+    _overview_dataframe(f"{label} relationship code rules", relationship_rules_df)
+    _overview_csv_file(output_csv_path, f"{label} relationship code rules CSV")
+    return relationship_rules_df
+
+
 def run_inspection_costs_workflow(
     *,
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
@@ -305,10 +329,12 @@ def run_inspection_costs_workflow(
     scenarios_costed_perfect_information_path = Path(SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH)
     relationship_summary_path = Path(RELATIONSHIP_SUMMARY_CSV_PATH)
     relationship_boxplot_values_path = Path(RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
+    relationship_rules_path = Path(RELATIONSHIP_RULES_CSV_PATH)
     relationship_boxplot_images_path = Path(RELATIONSHIP_BOXPLOT_IMAGES_DIR)
     relationship_model_text_path = Path(RELATIONSHIP_MODEL_TEXT_PATH)
     perfect_information_relationship_summary_path = Path(PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH)
     perfect_information_relationship_boxplot_values_path = Path(PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
+    perfect_information_relationship_rules_path = Path(PERFECT_INFORMATION_RELATIONSHIP_RULES_CSV_PATH)
     perfect_information_relationship_boxplot_images_path = Path(PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR)
     perfect_information_relationship_model_text_path = Path(PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH)
     detection_lookup_table = None
@@ -317,9 +343,11 @@ def run_inspection_costs_workflow(
     perfect_information_final_df = None
     relationship_summary_df = None
     relationship_boxplot_df = None
+    relationship_rules_df = None
     relationship_model_text = None
     perfect_information_relationship_summary_df = None
     perfect_information_relationship_boxplot_df = None
+    perfect_information_relationship_rules_df = None
     perfect_information_relationship_model_text = None
     start_time = time.perf_counter()
 
@@ -438,6 +466,32 @@ def run_inspection_costs_workflow(
         perfect_information_relationship_boxplot_df,
         perfect_information_relationship_model_text,
     ) = relationship_results["perfect-information"]
+
+    if scenario_component_df is None:
+        print(f"Loading scenario-component rows from {scenarios_combined_path} for relationship rules")
+        scenario_component_df = pd.read_parquet(scenarios_combined_path)
+    if final_df is None:
+        print(f"Loading costed scenarios from {scenarios_costed_path} for relationship rules")
+        final_df = pd.read_parquet(scenarios_costed_path)
+    if perfect_information_final_df is None:
+        print(
+            f"Loading perfect-information scenarios from {scenarios_costed_perfect_information_path} "
+            "for relationship rules"
+        )
+        perfect_information_final_df = pd.read_parquet(scenarios_costed_perfect_information_path)
+
+    relationship_rules_df = _write_relationship_code_rules(
+        scenario_df=final_df,
+        scenario_component_df=scenario_component_df,
+        output_csv_path=relationship_rules_path,
+        label="all",
+    )
+    perfect_information_relationship_rules_df = _write_relationship_code_rules(
+        scenario_df=perfect_information_final_df,
+        scenario_component_df=scenario_component_df,
+        output_csv_path=perfect_information_relationship_rules_path,
+        label="perfect-information",
+    )
     elapsed_seconds = time.perf_counter() - start_time
     print(f"Inspection costs workflow complete in {elapsed_seconds:.2f} seconds")
     return {
@@ -446,9 +500,11 @@ def run_inspection_costs_workflow(
         "perfect_information_final_df": perfect_information_final_df,
         "relationship_summary_df": relationship_summary_df,
         "relationship_boxplot_df": relationship_boxplot_df,
+        "relationship_rules_df": relationship_rules_df,
         "relationship_model_text": relationship_model_text,
         "perfect_information_relationship_summary_df": perfect_information_relationship_summary_df,
         "perfect_information_relationship_boxplot_df": perfect_information_relationship_boxplot_df,
+        "perfect_information_relationship_rules_df": perfect_information_relationship_rules_df,
         "perfect_information_relationship_model_text": perfect_information_relationship_model_text,
     }
 
