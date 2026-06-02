@@ -84,6 +84,9 @@ def build_detection_lookup_table(
     m_vals: Iterable[float] = ALL_M_VALS,
     parquet_path: Optional[str | Path] = DETECTION_LOOKUP_TABLE_PARQUET_PATH,
 ) -> pd.DataFrame:
+    if parquet_path is not None:
+        parquet_path = Path(parquet_path)
+
     rows = []
     for N in cluster_sizes:
         for n in n_vals:
