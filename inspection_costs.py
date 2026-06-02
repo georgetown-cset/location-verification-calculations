@@ -34,6 +34,7 @@ MIX_STEPS = np.linspace(
 )
 ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
 OUTPUT_DIR = "output"
+ALL_OUTPUT_DIR = f"{OUTPUT_DIR}/all"
 PERFECT_INFORMATION_OUTPUT_DIR = f"{OUTPUT_DIR}/perfect_information"
 DATA_SAVED_DIR = "data/saved"
 PARQUET_COMPRESSION = "zstd"
@@ -42,10 +43,10 @@ SCENARIOS_PARQUET_PATH = "data/scenario_components"
 SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
 SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
 SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed_perfect_information.parquet"
-RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/relationship_summary.csv"
-RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{OUTPUT_DIR}/relationship_boxplot_values.csv"
-RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{OUTPUT_DIR}/images"
-RELATIONSHIP_MODEL_TEXT_PATH = f"{OUTPUT_DIR}/relationship_code_model.txt"
+RELATIONSHIP_SUMMARY_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_summary.csv"
+RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_boxplot_values.csv"
+RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{ALL_OUTPUT_DIR}/images"
+RELATIONSHIP_MODEL_TEXT_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_model.txt"
 PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_summary.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_boxplot_values.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUTPUT_DIR}/images"
@@ -404,7 +405,7 @@ def run_inspection_costs_workflow(
 
     relationship_outputs = [
         {
-            "label": "main",
+            "label": "all",
             "parquet_path": scenarios_costed_path,
             "summary_path": relationship_summary_path,
             "boxplot_values_path": relationship_boxplot_values_path,
@@ -431,7 +432,7 @@ def run_inspection_costs_workflow(
             label=output_config["label"],
         )
 
-    relationship_summary_df, relationship_boxplot_df, relationship_model_text = relationship_results["main"]
+    relationship_summary_df, relationship_boxplot_df, relationship_model_text = relationship_results["all"]
     (
         perfect_information_relationship_summary_df,
         perfect_information_relationship_boxplot_df,
