@@ -1,7 +1,21 @@
 from __future__ import annotations
 
-from inspection_costs_stage1 import *
-from inspection_costs_stage1 import _plv_variant_specs
+import numpy as np
+import pandas as pd
+
+from inspection_costs import (
+    COLUMN_NAMES,
+    NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR,
+    PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
+    PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
+    PLV_DISCOUNT_RATE,
+    PLV_OWNING_COST_PER_TOTAL_CHIP,
+    PLV_RENTING_COST_PER_TOTAL_CHIP,
+    TARGET_CHIPS,
+    _plv_variant_specs,
+)
+
+
 def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame) -> pd.DataFrame:
     if scenario_component_df.empty:
         return pd.DataFrame(

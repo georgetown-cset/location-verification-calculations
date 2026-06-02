@@ -1,18 +1,30 @@
 from __future__ import annotations
 
-from inspection_costs_stage1 import *
-from inspection_costs_stage1 import (
+from collections import Counter
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from inspection_costs import (
+    COLUMN_NAMES,
     LONG_SCENARIO_VALUE_VARS,
+    PLV_VARIANT_ORDER,
     RELATIONSHIP_CODE_ORDER,
+    RELATIONSHIP_MODEL_BASE_FEATURE_COLUMNS,
+    RELATIONSHIP_MODEL_FEATURE_COLUMNS,
     SMUGGLED_CHIPS_METRIC_FAMILY,
     SMUGGLED_CHIPS_SCENARIO_GROUP,
     SMUGGLED_CHIPS_SCENARIO_TYPE,
     SMUGGLED_CHIPS_SCENARIO_VARIANT,
-    _iter_parquet_batches,
     _plv_relationship_labels,
     _plv_variant_specs,
     _scenario_variant_label,
 )
+from inspection_costs_stage1 import (
+    _iter_parquet_batches,
+)
+
 def _summarize_relationships_from_parquet(
     parquet_path: Path,
     batch_size: int = 65_536,
@@ -387,51 +399,6 @@ def _write_relationship_boxplot_values_from_parquet(
     summary_df.to_csv(output_csv_path, index=False)
     _render_relationship_boxplot_images(grouped_values, output_images_dir)
     return summary_df
-RELATIONSHIP_MODEL_BASE_FEATURE_COLUMNS = [
-    COLUMN_NAMES['total_clusters_in_mix'],
-    COLUMN_NAMES['scenario_component_count'],
-    COLUMN_NAMES['total_tests'],
-    COLUMN_NAMES['total_component_chips'],
-    COLUMN_NAMES['bad_records'],
-    COLUMN_NAMES['share_diverted'],
-    COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
-    "PLV Renting - Total Diverted Chips Identified",
-    "PLV Owning - Total Diverted Chips Identified",
-    "Physical Inspection - Min Total Cost",
-    "Physical Inspection - Max Total Cost",
-    "PLV Renting - Min Total Cost",
-    "PLV Renting - Max Total Cost",
-    "PLV Owning - Min Total Cost",
-    "PLV Owning - Max Total Cost",
-]
-
-
-RELATIONSHIP_MODEL_FEATURE_COLUMNS = [
-    "log_total_clusters_in_mix",
-    "scenario_component_count",
-    "log_total_tests",
-    "log_bad_records",
-    "share_diverted",
-    "tests_per_cluster",
-    "bad_records_per_test",
-    "physical_identified_share",
-    "plv_renting_identified_share",
-    "plv_owning_identified_share",
-    "log_physical_detected",
-    "log_plv_renting_detected",
-    "log_plv_owning_detected",
-    "plv_renting_minus_physical_detected_share",
-    "plv_owning_minus_physical_detected_share",
-    "physical_to_plv_renting_detected_ratio",
-    "physical_to_plv_owning_detected_ratio",
-    "physical_min_cost_per_test",
-    "physical_cost_range_per_test",
-    "plv_renting_cost_per_chip",
-    "plv_owning_cost_per_chip",
-    "plv_cost_spread_per_chip",
-]
-
-
 def _relationship_model_feature_frame(source_df: pd.DataFrame) -> pd.DataFrame:
     """Build numeric predictors and interactions for relationship-code modeling."""
 

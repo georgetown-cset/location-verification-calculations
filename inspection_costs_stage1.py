@@ -17,170 +17,37 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-
-TARGET_CHIPS = 3_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
-SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25 # Share of clusters in a scenario component that are assumed to contain smuggling. This imposes an upper bound on the number of clusters with smuggling in a scenario component.
-NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
-
-PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (8.3, 48.8)
-PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2545, 5900)
-PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS) # 12 - 500 landmark servers
-PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS) # 12 - 500 landmark servers
-PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
-MIN_SHARE_DIVERTED = 0.1 # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
-
-MIX_STEP_SIZE = 0.2
-CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
-K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
-N_VALS = [0, 1, 10, 100, 1000] # Number of tests conducted on a cluster
-PHYSICAL_INSPECTION_M_VALS = [0.05] # Probability that a diverted chip is not detected by a physical inspection test (i.e., the "miss" probability)
-PLV_M_VALS = [0.1] # Probability that a diverted chip is not detected by a PLV test (i.e., the "miss" probability)
-
-MIX_STEPS = np.linspace(
-    0.0,
-    1.0,
-    int(round(1.0 / MIX_STEP_SIZE)) + 1,
+from inspection_costs import (
+    ALL_M_VALS,
+    CLUSTER_SIZES,
+    COLUMN_NAMES,
+    DATA_SAVED_DIR,
+    DETECTION_LOOKUP_TABLE_PARQUET_PATH,
+    K_VALS,
+    MIN_SHARE_DIVERTED,
+    MIX_STEPS,
+    N_VALS,
+    NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR,
+    OUTPUT_DIR,
+    PARQUET_COMPRESSION,
+    PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
+    PHYSICAL_INSPECTION_M_VALS,
+    PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
+    PLV_DISCOUNT_RATE,
+    PLV_M_VALS,
+    PLV_OWNING_COST_PER_TOTAL_CHIP,
+    PLV_RENTING_COST_PER_TOTAL_CHIP,
+    RELATIONSHIP_BOXPLOT_IMAGES_DIR,
+    RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH,
+    RELATIONSHIP_MODEL_TEXT_PATH,
+    RELATIONSHIP_SUMMARY_CSV_PATH,
+    SCENARIO_COLUMNS,
+    SCENARIOS_COMBINED_PARQUET_PATH,
+    SCENARIOS_COSTED_PARQUET_PATH,
+    SCENARIOS_PARQUET_PATH,
+    SHARE_OF_CLUSTERS_WITH_SMUGGLING,
+    TARGET_CHIPS,
 )
-ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
-OUTPUT_DIR = "output"
-DATA_SAVED_DIR = "data/saved"
-PARQUET_COMPRESSION = "zstd"
-DETECTION_LOOKUP_TABLE_PARQUET_PATH = f"{DATA_SAVED_DIR}/detection_lookup_table.parquet"
-SCENARIOS_PARQUET_PATH = "data/scenario_components"
-SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
-SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
-RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/relationship_summary.csv"
-RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{OUTPUT_DIR}/relationship_boxplot_values.csv"
-RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{OUTPUT_DIR}/images"
-RELATIONSHIP_MODEL_TEXT_PATH = f"{OUTPUT_DIR}/relationship_code_model.txt"
-PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
-
-COLUMN_NAMES = {
-    "mix_id": "Mix ID",
-    "scenario_id": "Scenario ID",
-    "mix_description": "Mix Description",
-    "total_clusters_in_mix": "Total Clusters in Mix",
-    "total_tests": "Total Tests",
-    "total_component_chips": "Total Component Chips",
-    "scenario_component_count": "Scenario Component Count",
-    "k_combo": "K Combo",
-    "n_combo": "N Combo",
-    "cluster_size": "Cluster Size (N)",
-    "bad_records": "Bad Records (K)",
-    "total_bad_records": "Total Bad Records",
-    "number_of_clusters": "Number of Clusters",
-    "number_of_clusters_with_smuggling": "Number of Clusters with Smuggling",
-    "tests": "Tests (n)",
-    "share_diverted": "Share Diverted",
-    "chip_level_miss_prob": "Chip-level Miss Prob (m)",
-    "physical_inspection_chip_level_miss_prob": "Physical Inspection - Chip-level Miss Prob (m)",
-    "plv_chip_level_miss_prob": "PLV - Chip-level Miss Prob (m)",
-    "physical_inspection_p_detect": "Physical Inspection - P(Detect)",
-    "physical_inspection_diverted_chips_identified": "Physical Inspection - Diverted Chips Identified",
-    "plv_p_detect": "PLV - P(Detect)",
-    "plv_diverted_chips_identified": "PLV - Diverted Chips Identified",
-    "physical_inspection_total_diverted_chips_identified": "Physical Inspection - Total Diverted Chips Identified",
-    "plv_total_diverted_chips_identified": "PLV - Total Diverted Chips Identified",
-    "metric_family": "Metric Family",
-    "relationship_code": "Relationship Code",
-    "relationship_description": "Relationship Description",
-    "scenario_group": "Scenario Group",
-    "scenario_variant": "Scenario Variant",
-    "scenario_type": "Scenario Type",
-    "value": "Value",
-    "scenario_count": "Scenario Count",
-    "plv_type": "PLV Type",
-    "benefit_per_dollar_relationship_description": "Benefit Per Dollar Relationship Description",
-    "benefit_per_dollar_scenario_count": "Benefit Per Dollar Scenario Count",
-}
-SCENARIO_COLUMNS = [
-    COLUMN_NAMES['mix_id'],
-    COLUMN_NAMES['scenario_id'],
-    COLUMN_NAMES['mix_description'],
-    COLUMN_NAMES['total_clusters_in_mix'],
-    COLUMN_NAMES['total_tests'],
-    COLUMN_NAMES['total_component_chips'],
-    COLUMN_NAMES['scenario_component_count'],
-    COLUMN_NAMES['k_combo'],
-    COLUMN_NAMES['n_combo'],
-    COLUMN_NAMES['cluster_size'],
-    COLUMN_NAMES['bad_records'],
-    COLUMN_NAMES['total_bad_records'],
-    COLUMN_NAMES['number_of_clusters'],
-    COLUMN_NAMES['number_of_clusters_with_smuggling'],
-    COLUMN_NAMES['tests'],
-    COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
-    COLUMN_NAMES['physical_inspection_p_detect'],
-    COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
-    COLUMN_NAMES['plv_chip_level_miss_prob'],
-    COLUMN_NAMES['plv_p_detect'],
-    COLUMN_NAMES['plv_diverted_chips_identified'],
-    COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
-    COLUMN_NAMES['plv_total_diverted_chips_identified'],
-]
-LONG_SCENARIO_VALUE_VARS = (
-    "Physical - Min Benefit Per Dollar",
-    "Physical - Max Benefit Per Dollar",
-    "PLV Renting - Min Benefit Per Dollar",
-    "PLV Renting - Max Benefit Per Dollar",
-    "PLV Owning - Min Benefit Per Dollar",
-    "PLV Owning - Max Benefit Per Dollar",
-)
-LONG_SCENARIO_BENEFIT_SCENARIOS = {
-    "Physical - Min Benefit Per Dollar": "Physical (Conservative)",
-    "Physical - Max Benefit Per Dollar": "Physical (Optimistic)",
-}
-
-
-def _scenario_variant_label(scenario_type: str, plv_type: str | None = None) -> str:
-    if scenario_type.startswith("Physical"):
-        return LONG_SCENARIO_BENEFIT_SCENARIOS[scenario_type]
-    if scenario_type.startswith("PLV"):
-        if plv_type is None:
-            plv_type = "PLV"
-        suffix = "Conservative" if "Min" in scenario_type else "Optimistic"
-        return f"{plv_type} ({suffix})"
-    if scenario_type == SMUGGLED_CHIPS_SCENARIO_TYPE:
-        return SMUGGLED_CHIPS_SCENARIO_VARIANT
-    return scenario_type
-SMUGGLED_CHIPS_METRIC_FAMILY = "Smuggled Chips"
-SMUGGLED_CHIPS_SCENARIO_GROUP = "Scenario Total"
-SMUGGLED_CHIPS_SCENARIO_VARIANT = "Smuggled Chips"
-SMUGGLED_CHIPS_SCENARIO_TYPE = "Total Smuggled Chips"
-BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN = "Physical vs PLV Benefit Per Dollar Relationship"
-BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS = {
-    "a": "Physical max benefit per dollar is less than PLV min benefit per dollar",
-    "b": "Physical max benefit per dollar is within PLV range and Physical min benefit per dollar is below PLV min benefit per dollar",
-    "c": "Physical min and max benefit per dollar are both within PLV range",
-    "d": "Physical min benefit per dollar is within PLV range and Physical max benefit per dollar is above PLV max benefit per dollar",
-    "e": "Physical min benefit per dollar is greater than PLV max benefit per dollar",
-    "f": "Physical benefit per dollar range spans both sides of PLV range",
-}
-RELATIONSHIP_CODE_ORDER = list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys())
-
-
-def _plv_relationship_labels(plv_type: str) -> dict[str, str]:
-    return {
-        "a": f"Physical max benefit per dollar is less than {plv_type} min benefit per dollar",
-        "b": f"Physical max benefit per dollar is within {plv_type} range and Physical min benefit per dollar is below {plv_type} min benefit per dollar",
-        "c": f"Physical min and max benefit per dollar are both within {plv_type} range",
-        "d": f"Physical min benefit per dollar is within {plv_type} range and Physical max benefit per dollar is above {plv_type} max benefit per dollar",
-        "e": f"Physical min benefit per dollar is greater than {plv_type} max benefit per dollar",
-        "f": f"Physical benefit per dollar range spans both sides of {plv_type} range",
-    }
-
-
-def _plv_variant_specs() -> list[dict[str, object]]:
-    return [
-        {
-            "plv_type": "PLV Renting",
-            "cost_per_total_chip": PLV_RENTING_COST_PER_TOTAL_CHIP,
-        },
-        {
-            "plv_type": "PLV Owning",
-            "cost_per_total_chip": PLV_OWNING_COST_PER_TOTAL_CHIP,
-        },
-    ]
 
 
 def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
