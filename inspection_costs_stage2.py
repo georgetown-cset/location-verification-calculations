@@ -146,8 +146,6 @@ def _add_plv_variant_cost_benefit_columns(
 ) -> None:
     min_cost_column = f"{plv_type} - Min Total Cost"
     max_cost_column = f"{plv_type} - Max Total Cost"
-    min_net_benefit_column = f"{plv_type} - Min Net Benefit"
-    max_net_benefit_column = f"{plv_type} - Max Net Benefit"
     min_benefit_per_dollar_column = f"{plv_type} - Min Benefit Per Dollar"
     max_benefit_per_dollar_column = f"{plv_type} - Max Benefit Per Dollar"
     detected_column = f"{plv_type} - Total Diverted Chips Identified"
@@ -155,14 +153,6 @@ def _add_plv_variant_cost_benefit_columns(
     result[detected_column] = result[COLUMN_NAMES['plv_total_diverted_chips_identified']]
     result[min_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[0]
     result[max_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[1]
-    result[min_net_benefit_column] = (
-        result[detected_column] * DOLLARS_PER_CHIP_DETECTED[0] * PLV_DISCOUNT_RATE
-        - result[max_cost_column]
-    )
-    result[max_net_benefit_column] = (
-        result[detected_column] * DOLLARS_PER_CHIP_DETECTED[1] * PLV_DISCOUNT_RATE
-        - result[min_cost_column]
-    )
     result[min_benefit_per_dollar_column] = (
         result[detected_column] * PLV_DISCOUNT_RATE / result[max_cost_column]
     )
@@ -170,20 +160,7 @@ def _add_plv_variant_cost_benefit_columns(
         result[detected_column] * PLV_DISCOUNT_RATE / result[min_cost_column]
     )
 
-    net_relationship_column = f"Physical vs {plv_type} Net Benefit Relationship"
     bpd_relationship_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
-    result[net_relationship_column] = _classify_interval_relationship(
-        result,
-        physical_min_column="Physical - Min Net Benefit",
-        physical_max_column="Physical - Max Net Benefit",
-        compare_min_column=min_net_benefit_column,
-        compare_max_column=max_net_benefit_column,
-        output_column=net_relationship_column,
-        error_message=(
-            f"Encountered an unexpected physical-vs-{plv_type} net benefit relationship; "
-            "check the interval classification logic."
-        ),
-    )
     result[bpd_relationship_column] = _classify_interval_relationship(
         result,
         physical_min_column="Physical - Min Benefit Per Dollar",
@@ -218,14 +195,6 @@ def add_cost_benefit_columns(
     result["Physical Inspection - Max Total Cost"] = (
         (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_fixed_cost_per_inspection[1]
         + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[1])*NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR
-    )
-    result["Physical - Min Net Benefit"] = (
-        result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[0]
-        - result["Physical Inspection - Max Total Cost"]
-    )
-    result["Physical - Max Net Benefit"] = (
-        result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] * DOLLARS_PER_CHIP_DETECTED[1]
-        - result["Physical Inspection - Min Total Cost"]
     )
     result["Physical - Min Benefit Per Dollar"] = (
         result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] / result["Physical Inspection - Max Total Cost"]

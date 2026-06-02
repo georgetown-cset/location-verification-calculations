@@ -21,7 +21,6 @@ from matplotlib.patches import Patch
 TARGET_CHIPS = 3_000_000 # Total number of chips in the scenarios, which is used to determine how many clusters of each size are needed in the mixes
 SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25 # Share of clusters in a scenario component that are assumed to contain smuggling. This imposes an upper bound on the number of clusters with smuggling in a scenario component.
 NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
-DOLLARS_PER_CHIP_DETECTED = (1000, 60000) # Estimated range of the value of detecting a diverted chip, which is used to convert net benefit estimates from chip counts to dollars
 
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (8.3, 48.8)
 PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2545, 5900)
@@ -30,7 +29,7 @@ PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_
 PLV_DISCOUNT_RATE = 0.5 # Discount rate to apply to PLV benefits to account for it not being a perfect substitute for physical inspections
 MIN_SHARE_DIVERTED = 0.1 # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
-MIX_STEP_SIZE = 0.1
+MIX_STEP_SIZE = 0.2
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000] # Sizes of clusters to consider in mixes
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000] # Number of diverted chips in a cluster with smuggling (i.e., the "bad records" in a cluster)
 N_VALS = [0, 1, 10, 100, 1000] # Number of tests conducted on a cluster
@@ -91,9 +90,7 @@ COLUMN_NAMES = {
     "value": "Value",
     "scenario_count": "Scenario Count",
     "plv_type": "PLV Type",
-    "net_benefit_relationship_description": "Net Benefit Relationship Description",
     "benefit_per_dollar_relationship_description": "Benefit Per Dollar Relationship Description",
-    "net_benefit_scenario_count": "Net Benefit Scenario Count",
     "benefit_per_dollar_scenario_count": "Benefit Per Dollar Scenario Count",
 }
 SCENARIO_COLUMNS = [
@@ -122,12 +119,6 @@ SCENARIO_COLUMNS = [
     COLUMN_NAMES['plv_total_diverted_chips_identified'],
 ]
 LONG_SCENARIO_VALUE_VARS = (
-    "Physical - Min Net Benefit",
-    "Physical - Max Net Benefit",
-    "PLV Renting - Min Net Benefit",
-    "PLV Renting - Max Net Benefit",
-    "PLV Owning - Min Net Benefit",
-    "PLV Owning - Max Net Benefit",
     "Physical - Min Benefit Per Dollar",
     "Physical - Max Benefit Per Dollar",
     "PLV Renting - Min Benefit Per Dollar",
@@ -136,8 +127,6 @@ LONG_SCENARIO_VALUE_VARS = (
     "PLV Owning - Max Benefit Per Dollar",
 )
 LONG_SCENARIO_BENEFIT_SCENARIOS = {
-    "Physical - Min Net Benefit": "Physical (Conservative)",
-    "Physical - Max Net Benefit": "Physical (Optimistic)",
     "Physical - Min Benefit Per Dollar": "Physical (Conservative)",
     "Physical - Max Benefit Per Dollar": "Physical (Optimistic)",
 }
@@ -158,15 +147,6 @@ SMUGGLED_CHIPS_METRIC_FAMILY = "Smuggled Chips"
 SMUGGLED_CHIPS_SCENARIO_GROUP = "Scenario Total"
 SMUGGLED_CHIPS_SCENARIO_VARIANT = "Smuggled Chips"
 SMUGGLED_CHIPS_SCENARIO_TYPE = "Total Smuggled Chips"
-NET_BENEFIT_RELATIONSHIP_COLUMN = "Physical vs PLV Net Benefit Relationship"
-NET_BENEFIT_RELATIONSHIP_LABELS = {
-    "a": "Physical max net benefit is less than PLV min net benefit",
-    "b": "Physical max net benefit is within PLV net benefit range and Physical min net benefit is below PLV min net benefit",
-    "c": "Physical min and max net benefits are both within PLV net benefit range",
-    "d": "Physical min net benefit is within PLV net benefit range and Physical max net benefit is above PLV max net benefit",
-    "e": "Physical min net benefit is greater than PLV max net benefit",
-    "f": "Physical net benefit range spans both sides of PLV net benefit range",
-}
 BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN = "Physical vs PLV Benefit Per Dollar Relationship"
 BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS = {
     "a": "Physical max benefit per dollar is less than PLV min benefit per dollar",
@@ -176,29 +156,18 @@ BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS = {
     "e": "Physical min benefit per dollar is greater than PLV max benefit per dollar",
     "f": "Physical benefit per dollar range spans both sides of PLV range",
 }
-RELATIONSHIP_CODE_ORDER = list(NET_BENEFIT_RELATIONSHIP_LABELS.keys())
+RELATIONSHIP_CODE_ORDER = list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys())
 
 
-def _plv_relationship_labels(plv_type: str, metric_family: str) -> dict[str, str]:
-    if metric_family == "net_benefit":
-        return {
-            "a": f"Physical max net benefit is less than {plv_type} min net benefit",
-            "b": f"Physical max net benefit is within {plv_type} net benefit range and Physical min net benefit is below {plv_type} min net benefit",
-            "c": f"Physical min and max net benefits are both within {plv_type} net benefit range",
-            "d": f"Physical min net benefit is within {plv_type} net benefit range and Physical max net benefit is above {plv_type} max net benefit",
-            "e": f"Physical min net benefit is greater than {plv_type} max net benefit",
-            "f": f"Physical net benefit range spans both sides of {plv_type} net benefit range",
-        }
-    if metric_family == "benefit_per_dollar":
-        return {
-            "a": f"Physical max benefit per dollar is less than {plv_type} min benefit per dollar",
-            "b": f"Physical max benefit per dollar is within {plv_type} range and Physical min benefit per dollar is below {plv_type} min benefit per dollar",
-            "c": f"Physical min and max benefit per dollar are both within {plv_type} range",
-            "d": f"Physical min benefit per dollar is within {plv_type} range and Physical max benefit per dollar is above {plv_type} max benefit per dollar",
-            "e": f"Physical min benefit per dollar is greater than {plv_type} max benefit per dollar",
-            "f": f"Physical benefit per dollar range spans both sides of {plv_type} range",
-        }
-    raise ValueError(f"Unknown metric family: {metric_family}")
+def _plv_relationship_labels(plv_type: str) -> dict[str, str]:
+    return {
+        "a": f"Physical max benefit per dollar is less than {plv_type} min benefit per dollar",
+        "b": f"Physical max benefit per dollar is within {plv_type} range and Physical min benefit per dollar is below {plv_type} min benefit per dollar",
+        "c": f"Physical min and max benefit per dollar are both within {plv_type} range",
+        "d": f"Physical min benefit per dollar is within {plv_type} range and Physical max benefit per dollar is above {plv_type} max benefit per dollar",
+        "e": f"Physical min benefit per dollar is greater than {plv_type} max benefit per dollar",
+        "f": f"Physical benefit per dollar range spans both sides of {plv_type} range",
+    }
 
 
 def _plv_variant_specs() -> list[dict[str, object]]:
