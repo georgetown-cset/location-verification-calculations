@@ -145,13 +145,6 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
         COLUMN_NAMES['plv_chip_level_miss_prob'],
     ]
     score_column = "Physical - Max Benefit Per Dollar"
-    required_columns = group_columns + [score_column, COLUMN_NAMES['scenario_id']]
-    missing_columns = [column for column in required_columns if column not in final_df.columns]
-    if missing_columns:
-        raise ValueError(
-            "Cannot build perfect-information scenarios because the following required columns are missing: "
-            + ", ".join(missing_columns)
-        )
 
     ordered_df = final_df.sort_values(
         group_columns + [COLUMN_NAMES['scenario_id']],

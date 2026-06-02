@@ -363,71 +363,48 @@ def run_inspection_costs_workflow(
     )
     _overview_dataframe("Detection lookup table", detection_lookup_table)
 
-    if not scenarios_combined_path.exists():
-        print(f"Scenario-component combined parquet is missing; building {scenarios_combined_path}")
-        print("Building scenario-component rows")
-        scenario_component_df = build_scenarios(
-            cluster_sizes=cluster_sizes,
-            detection_lookup_table=detection_lookup_table,
-            k_vals=k_vals,
-            physical_m_vals=physical_m_vals,
-            plv_m_vals=plv_m_vals,
-            target_chips=target_chips,
-            steps=steps,
-            return_dataframe=True,
-        )
-        _overview_dataframe("Scenario-component rows", scenario_component_df)
-
-        scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving scenario-component rows to {scenarios_combined_path}")
-        scenario_component_df.to_parquet(
-            scenarios_combined_path,
-            index=False,
-            compression=PARQUET_COMPRESSION,
-        )
+    print("Building scenario-component rows")
+    scenario_component_df = build_scenarios(
+        cluster_sizes=cluster_sizes,
+        detection_lookup_table=detection_lookup_table,
+        k_vals=k_vals,
+        physical_m_vals=physical_m_vals,
+        plv_m_vals=plv_m_vals,
+        target_chips=target_chips,
+        steps=steps,
+        return_dataframe=True,
+    )
+    _overview_dataframe("Scenario-component rows", scenario_component_df)
 
     _overview_parquet_dataset(Path(SCENARIOS_PARQUET_PATH), "Scenario-component parquet dataset")
     _overview_parquet_file(scenarios_combined_path, "Combined scenario-component parquet")
 
-    if not scenarios_costed_path.exists():
-        print(f"Costed scenarios parquet is missing; building {scenarios_costed_path}")
-        if scenario_component_df is None:
-            print(f"Loading scenario-component rows from {scenarios_combined_path}")
-            scenario_component_df = pd.read_parquet(scenarios_combined_path)
-        if scenario_component_df is None:
-            raise ValueError("scenario_component_df is required when costed scenarios are not saved")
-        print("Aggregating scenario-component rows to scenario level")
-        scenario_df = _derive_scenario_summary_from_components(scenario_component_df)
-        _overview_dataframe("Scenario-level rows", scenario_df)
-        print("Adding cost and benefit columns")
-        final_df = add_cost_benefit_columns(
-            scenario_df,
-            phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
-            phys_inspection_fixed_cost_per_inspection=phys_inspection_fixed_cost_per_inspection,
-            plv_renting_cost_per_total_chip=plv_renting_cost_per_total_chip,
-            plv_owning_cost_per_total_chip=plv_owning_cost_per_total_chip,
-        )
-        scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving final scenarios to {scenarios_costed_path}")
-        final_df.to_parquet(scenarios_costed_path, index=False, compression=PARQUET_COMPRESSION)
+    print(f"Aggregating scenario-component rows to scenario level")
+    scenario_df = _derive_scenario_summary_from_components(scenario_component_df)
+    _overview_dataframe("Scenario-level rows", scenario_df)
+    print("Adding cost and benefit columns")
+    final_df = add_cost_benefit_columns(
+        scenario_df,
+        phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
+        phys_inspection_fixed_cost_per_inspection=phys_inspection_fixed_cost_per_inspection,
+        plv_renting_cost_per_total_chip=plv_renting_cost_per_total_chip,
+        plv_owning_cost_per_total_chip=plv_owning_cost_per_total_chip,
+    )
+    scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Saving final scenarios to {scenarios_costed_path}")
+    final_df.to_parquet(scenarios_costed_path, index=False, compression=PARQUET_COMPRESSION)
 
     _overview_parquet_file(scenarios_costed_path, "Costed scenarios parquet")
 
-    if not scenarios_costed_perfect_information_path.exists():
-        if final_df is None:
-            print(f"Loading costed scenarios from {scenarios_costed_path}")
-            final_df = pd.read_parquet(scenarios_costed_path)
-        if final_df is None:
-            raise ValueError("final_df is required when perfect-information scenarios are not saved")
-        print("Filtering costed scenarios for perfect-information subset")
-        perfect_information_final_df = filter_perfect_information_scenarios(final_df)
-        scenarios_costed_perfect_information_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving perfect-information scenarios to {scenarios_costed_perfect_information_path}")
-        perfect_information_final_df.to_parquet(
-            scenarios_costed_perfect_information_path,
-            index=False,
-            compression=PARQUET_COMPRESSION,
-        )
+    print("Filtering costed scenarios for perfect-information subset")
+    perfect_information_final_df = filter_perfect_information_scenarios(final_df)
+    scenarios_costed_perfect_information_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Saving perfect-information scenarios to {scenarios_costed_perfect_information_path}")
+    perfect_information_final_df.to_parquet(
+        scenarios_costed_perfect_information_path,
+        index=False,
+        compression=PARQUET_COMPRESSION,
+    )
 
     _overview_parquet_file(scenarios_costed_perfect_information_path, "Perfect-information scenarios parquet")
 
@@ -466,19 +443,6 @@ def run_inspection_costs_workflow(
         perfect_information_relationship_boxplot_df,
         perfect_information_relationship_model_text,
     ) = relationship_results["perfect-information"]
-
-    if scenario_component_df is None:
-        print(f"Loading scenario-component rows from {scenarios_combined_path} for relationship rules")
-        scenario_component_df = pd.read_parquet(scenarios_combined_path)
-    if final_df is None:
-        print(f"Loading costed scenarios from {scenarios_costed_path} for relationship rules")
-        final_df = pd.read_parquet(scenarios_costed_path)
-    if perfect_information_final_df is None:
-        print(
-            f"Loading perfect-information scenarios from {scenarios_costed_perfect_information_path} "
-            "for relationship rules"
-        )
-        perfect_information_final_df = pd.read_parquet(scenarios_costed_perfect_information_path)
 
     relationship_rules_df = _write_relationship_code_rules(
         scenario_df=final_df,

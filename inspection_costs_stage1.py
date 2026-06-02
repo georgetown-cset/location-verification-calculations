@@ -84,12 +84,6 @@ def build_detection_lookup_table(
     m_vals: Iterable[float] = ALL_M_VALS,
     parquet_path: Optional[str | Path] = DETECTION_LOOKUP_TABLE_PARQUET_PATH,
 ) -> pd.DataFrame:
-    if parquet_path is not None:
-        parquet_path = Path(parquet_path)
-        if parquet_path.exists():
-            print(f"build_detection_lookup_table: reading cached table from {parquet_path}")
-            return pd.read_parquet(parquet_path)
-
     rows = []
     for N in cluster_sizes:
         for n in n_vals:
@@ -316,39 +310,28 @@ def build_scenarios(
     if parquet_path is not None:
         component_dataset_path = parquet_path
         _ensure_scenarios_dataset_path(component_dataset_path)
-        pq, _pa = _import_pyarrow_parquet()
         for mix_components in mix_data:
             mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
-            mix_parquet_path = _mix_parquet_path(component_dataset_path, mix_id)
-            if mix_parquet_path.exists():
-                mix_scenario_component_count = pq.ParquetFile(mix_parquet_path).metadata.num_rows
-                mix_summary_count = _count_scenarios_in_component_file(mix_parquet_path, pq)
-                mix_fragment_count = 0
-                print(
-                    f"build_scenarios: skipping {mix_id} (already written); "
-                    f"scenario rows={mix_summary_count}, scenario-component rows={mix_scenario_component_count}"
-                )
-            else:
-                mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
-                    mix_components=mix_components,
-                    detection_grouped=detection_grouped,
-                    k_options_by_cluster_size=k_options_by_cluster_size,
-                    physical_m_vals=physical_m_vals,
-                    plv_m_vals=plv_m_vals,
-                    target_chips=target_chips,
-                )
-                mix_component_fragments = _write_scenario_dataset_to_parquet(
-                    dataset_path=component_dataset_path,
-                    mix_id=mix_id,
-                    records=mix_scenario_component_records,
-                )
-                mix_summary_count = mix_scenario_count
-                mix_fragment_count = len(mix_component_fragments)
-                print(
-                    f"build_scenarios: wrote {mix_id}; "
-                    f"scenario rows added={mix_scenario_count}, scenario-component rows added={mix_scenario_component_count}, "
-                    f"fragment files written={mix_fragment_count}"
-                )
+            mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
+                mix_components=mix_components,
+                detection_grouped=detection_grouped,
+                k_options_by_cluster_size=k_options_by_cluster_size,
+                physical_m_vals=physical_m_vals,
+                plv_m_vals=plv_m_vals,
+                target_chips=target_chips,
+            )
+            mix_component_fragments = _write_scenario_dataset_to_parquet(
+                dataset_path=component_dataset_path,
+                mix_id=mix_id,
+                records=mix_scenario_component_records,
+            )
+            mix_summary_count = mix_scenario_count
+            mix_fragment_count = len(mix_component_fragments)
+            print(
+                f"build_scenarios: wrote {mix_id}; "
+                f"scenario rows added={mix_scenario_count}, scenario-component rows added={mix_scenario_component_count}, "
+                f"fragment files written={mix_fragment_count}"
+            )
             total_scenarios += mix_summary_count
             total_scenario_component_rows += mix_scenario_component_count
             print(
@@ -393,14 +376,6 @@ def build_scenarios(
     if return_dataframe:
         return pd.DataFrame.from_records(scenario_component_records, columns=SCENARIO_COLUMNS)
     return pd.DataFrame(columns=SCENARIO_COLUMNS)
-
-
-def _count_scenarios_in_component_file(mix_parquet_path: Path, pq) -> int:
-    parquet_file = pq.ParquetFile(mix_parquet_path)
-    scenario_ids: set[str] = set()
-    for batch in parquet_file.iter_batches(columns=[COLUMN_NAMES['scenario_id']]):
-        scenario_ids.update(str(scenario_id) for scenario_id in batch.column(0).to_pylist())
-    return len(scenario_ids)
 
 
 def _write_scenario_dataset_to_parquet(
@@ -544,12 +519,7 @@ def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
 
 
 def _clear_directory(path: Path) -> None:
-    if not path.exists():
-        return
-    if path.is_file():
-        path.unlink()
-        return
-    shutil.rmtree(path)
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def _reset_workflow_artifacts() -> None:
@@ -627,10 +597,6 @@ def _overview_dataframe(name: str, df: pd.DataFrame, max_rows: int = 5) -> None:
 
 def _overview_parquet_file(path: Path, name: str, max_rows: int = 5) -> None:
     print(f"\n{name}: {path}")
-    if not path.exists():
-        print("Missing")
-        return
-
     pq, _pa = _import_pyarrow_parquet()
     parquet_file = pq.ParquetFile(path)
     print(f"Rows: {parquet_file.metadata.num_rows:,}; columns: {len(parquet_file.schema.names):,}")
@@ -642,10 +608,6 @@ def _overview_parquet_file(path: Path, name: str, max_rows: int = 5) -> None:
 
 def _overview_parquet_dataset(path: Path, name: str, max_rows: int = 5) -> None:
     print(f"\n{name}: {path}")
-    if not path.exists():
-        print("Missing")
-        return
-
     parquet_paths = sorted(path.rglob("*.parquet")) if path.is_dir() else [path]
     if not parquet_paths:
         print("No parquet files")
@@ -670,10 +632,6 @@ def _overview_parquet_dataset(path: Path, name: str, max_rows: int = 5) -> None:
 
 def _overview_csv_file(path: Path, name: str, max_rows: int = 5) -> None:
     print(f"\n{name}: {path}")
-    if not path.exists():
-        print("Missing")
-        return
-
     preview_df = pd.read_csv(path, nrows=max_rows)
     with path.open(encoding="utf-8") as csv_file:
         row_count = sum(1 for _line in csv_file)
