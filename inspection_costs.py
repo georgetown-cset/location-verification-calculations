@@ -20,7 +20,7 @@ PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_
 PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV benefits.
 MIN_SHARE_DIVERTED = 0.1  # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
 
-MIX_STEP_SIZE = 0.2
+MIX_STEP_SIZE = 0.1
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
 N_VALS = [0, 1, 10, 100, 1000]  # Tests conducted on a cluster.
