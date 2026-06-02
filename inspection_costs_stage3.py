@@ -29,18 +29,6 @@ from inspection_costs_stage1 import (
     _iter_parquet_batches,
 )
 
-def _parse_combo_values(combo_value: object) -> list[int]:
-    if pd.isna(combo_value):
-        return []
-    combo_text = str(combo_value).strip()
-    if not combo_text:
-        return []
-    try:
-        return [int(part) for part in combo_text.split("-") if part]
-    except ValueError as exc:
-        raise ValueError(f"Unable to parse combo value {combo_value!r} into integers") from exc
-
-
 def _format_rule_value(value: object) -> str:
     if pd.isna(value):
         return "NA"
@@ -68,6 +56,8 @@ def _build_relationship_rule_frame(
             COLUMN_NAMES['scenario_id'],
             COLUMN_NAMES['cluster_size'],
             COLUMN_NAMES['number_of_clusters'],
+            COLUMN_NAMES['bad_records'],
+            COLUMN_NAMES['tests'],
         ],
     ].groupby(COLUMN_NAMES['scenario_id'], sort=False, observed=True).agg(
         component_cluster_size_min=(COLUMN_NAMES['cluster_size'], "min"),
@@ -76,17 +66,31 @@ def _build_relationship_rule_frame(
         component_cluster_count_min=(COLUMN_NAMES['number_of_clusters'], "min"),
         component_cluster_count_max=(COLUMN_NAMES['number_of_clusters'], "max"),
         component_cluster_count_mean=(COLUMN_NAMES['number_of_clusters'], "mean"),
+        component_k_min=(COLUMN_NAMES['bad_records'], "min"),
+        component_k_max=(COLUMN_NAMES['bad_records'], "max"),
+        component_k_sum=(COLUMN_NAMES['bad_records'], "sum"),
+        component_n_min=(COLUMN_NAMES['tests'], "min"),
+        component_n_max=(COLUMN_NAMES['tests'], "max"),
+        component_n_sum=(COLUMN_NAMES['tests'], "sum"),
     ).reset_index()
     source_df = source_df.merge(component_summary, on=COLUMN_NAMES['scenario_id'], how='left')
 
-    k_values = source_df[COLUMN_NAMES['k_combo']].map(_parse_combo_values)
-    n_values = source_df[COLUMN_NAMES['n_combo']].map(_parse_combo_values)
-    source_df["K Combo Min"] = k_values.map(lambda values: float(min(values)) if values else np.nan)
-    source_df["K Combo Max"] = k_values.map(lambda values: float(max(values)) if values else np.nan)
-    source_df["K Combo Sum"] = k_values.map(lambda values: float(sum(values)) if values else np.nan)
-    source_df["N Combo Min"] = n_values.map(lambda values: float(min(values)) if values else np.nan)
-    source_df["N Combo Max"] = n_values.map(lambda values: float(max(values)) if values else np.nan)
-    source_df["N Combo Sum"] = n_values.map(lambda values: float(sum(values)) if values else np.nan)
+    source_df["K Combo Min"] = source_df["component_k_min"]
+    source_df["K Combo Max"] = source_df["component_k_max"]
+    source_df["K Combo Sum"] = source_df["component_k_sum"]
+    source_df["N Combo Min"] = source_df["component_n_min"]
+    source_df["N Combo Max"] = source_df["component_n_max"]
+    source_df["N Combo Sum"] = source_df["component_n_sum"]
+    source_df = source_df.drop(
+        columns=[
+            "component_k_min",
+            "component_k_max",
+            "component_k_sum",
+            "component_n_min",
+            "component_n_max",
+            "component_n_sum",
+        ]
+    )
 
     return source_df
 
