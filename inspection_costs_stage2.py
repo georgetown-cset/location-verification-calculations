@@ -27,10 +27,14 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
                 COLUMN_NAMES['scenario_component_count'],
                 COLUMN_NAMES['k_combo'],
                 COLUMN_NAMES['n_combo'],
+                COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
+                COLUMN_NAMES['plv_chip_level_miss_prob'],
                 COLUMN_NAMES['total_tests'],
                 COLUMN_NAMES['total_component_chips'],
                 COLUMN_NAMES['bad_records'],
                 COLUMN_NAMES['number_of_clusters_with_smuggling'],
+                COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
+                COLUMN_NAMES['plv_total_diverted_chips_identified'],
             ]
         )
 
@@ -42,6 +46,8 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['mix_description'],
             COLUMN_NAMES['k_combo'],
             COLUMN_NAMES['n_combo'],
+            COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
+            COLUMN_NAMES['plv_chip_level_miss_prob'],
             COLUMN_NAMES['total_tests'],
             COLUMN_NAMES['total_component_chips'],
             COLUMN_NAMES['total_bad_records'],
@@ -66,6 +72,11 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         Scenario_Component_Count=(COLUMN_NAMES['number_of_clusters'], "size"),
         K_Combo=(COLUMN_NAMES['k_combo'], "first"),
         N_Combo=(COLUMN_NAMES['n_combo'], "first"),
+        Physical_Inspection_Chip_Level_Miss_Prob=(
+            COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
+            "first",
+        ),
+        PLV_Chip_Level_Miss_Prob=(COLUMN_NAMES['plv_chip_level_miss_prob'], "first"),
         Total_Tests=(COLUMN_NAMES['total_tests'], "sum"),
         Total_Component_Chips=(COLUMN_NAMES['total_component_chips'], "sum"),
         Bad_Records=(COLUMN_NAMES['total_bad_records'], "sum"),
@@ -87,6 +98,8 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "Scenario_Component_Count": COLUMN_NAMES['scenario_component_count'],
             "K_Combo": COLUMN_NAMES['k_combo'],
             "N_Combo": COLUMN_NAMES['n_combo'],
+            "Physical_Inspection_Chip_Level_Miss_Prob": COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
+            "PLV_Chip_Level_Miss_Prob": COLUMN_NAMES['plv_chip_level_miss_prob'],
             "Total_Tests": COLUMN_NAMES['total_tests'],
             "Total_Component_Chips": COLUMN_NAMES['total_component_chips'],
             "Bad_Records": COLUMN_NAMES['bad_records'],
@@ -104,6 +117,8 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['scenario_component_count'],
             COLUMN_NAMES['k_combo'],
             COLUMN_NAMES['n_combo'],
+            COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
+            COLUMN_NAMES['plv_chip_level_miss_prob'],
             COLUMN_NAMES['total_tests'],
             COLUMN_NAMES['total_component_chips'],
             COLUMN_NAMES['bad_records'],
@@ -117,6 +132,46 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         f"_derive_scenario_summary_from_components: completed {len(scenario_summary)} scenario summaries"
     )
     return scenario_summary
+
+
+def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame:
+    if final_df.empty:
+        return final_df.copy()
+
+    group_columns = [
+        COLUMN_NAMES['mix_id'],
+        COLUMN_NAMES['k_combo'],
+        COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
+        COLUMN_NAMES['plv_chip_level_miss_prob'],
+    ]
+    score_column = "Physical - Max Benefit Per Dollar"
+    required_columns = group_columns + [score_column, COLUMN_NAMES['scenario_id']]
+    missing_columns = [column for column in required_columns if column not in final_df.columns]
+    if missing_columns:
+        raise ValueError(
+            "Cannot build perfect-information scenarios because the following required columns are missing: "
+            + ", ".join(missing_columns)
+        )
+
+    ordered_df = final_df.sort_values(
+        group_columns + [COLUMN_NAMES['scenario_id']],
+        ascending=[True, True, True, True, True],
+        kind="mergesort",
+    )
+    selected_indices = ordered_df.groupby(group_columns, sort=False, observed=True)[score_column].idxmax()
+    filtered_df = ordered_df.loc[selected_indices].copy()
+    filtered_df = filtered_df.sort_values(
+        group_columns + [COLUMN_NAMES['scenario_id']],
+        ascending=[True, True, True, True, True],
+        kind="mergesort",
+    ).reset_index(drop=True)
+
+    print(
+        "filter_perfect_information_scenarios: kept "
+        f"{len(filtered_df):,} of {len(final_df):,} scenarios across "
+        f"{len(selected_indices):,} grouped combinations"
+    )
+    return filtered_df
 
 
 def _classify_interval_relationship(

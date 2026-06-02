@@ -34,16 +34,22 @@ MIX_STEPS = np.linspace(
 )
 ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
 OUTPUT_DIR = "output"
+PERFECT_INFORMATION_OUTPUT_DIR = f"{OUTPUT_DIR}/perfect_information"
 DATA_SAVED_DIR = "data/saved"
 PARQUET_COMPRESSION = "zstd"
 DETECTION_LOOKUP_TABLE_PARQUET_PATH = f"{DATA_SAVED_DIR}/detection_lookup_table.parquet"
 SCENARIOS_PARQUET_PATH = "data/scenario_components"
 SCENARIOS_COMBINED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_combined.parquet"
 SCENARIOS_COSTED_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed.parquet"
+SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios_costed_perfect_information.parquet"
 RELATIONSHIP_SUMMARY_CSV_PATH = f"{OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{OUTPUT_DIR}/relationship_boxplot_values.csv"
 RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{OUTPUT_DIR}/images"
 RELATIONSHIP_MODEL_TEXT_PATH = f"{OUTPUT_DIR}/relationship_code_model.txt"
+PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_summary.csv"
+PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_boxplot_values.csv"
+PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUTPUT_DIR}/images"
+PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_model.txt"
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
 COLUMN_NAMES = {
@@ -228,12 +234,49 @@ from inspection_costs_stage1 import (
     build_detection_lookup_table,
     build_scenarios,
 )
-from inspection_costs_stage2 import _derive_scenario_summary_from_components, add_cost_benefit_columns
+from inspection_costs_stage2 import (
+    _derive_scenario_summary_from_components,
+    add_cost_benefit_columns,
+    filter_perfect_information_scenarios,
+)
 from inspection_costs_stage3 import (
     _summarize_relationships_from_parquet,
     _write_relationship_boxplot_values_from_parquet,
     write_relationship_code_model_report,
 )
+
+
+def _write_relationship_outputs(
+    *,
+    parquet_path: Path,
+    summary_path: Path,
+    boxplot_values_path: Path,
+    boxplot_images_path: Path,
+    model_text_path: Path,
+    label: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+    print(f"Generating {label} relationship summary at {summary_path}")
+    relationship_summary_df = _summarize_relationships_from_parquet(parquet_path)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Writing {label} relationship summary CSV to {summary_path}")
+    relationship_summary_df.to_csv(summary_path, index=False)
+    _overview_dataframe(f"{label} relationship summary", relationship_summary_df)
+    _overview_csv_file(summary_path, f"{label} relationship summary CSV")
+
+    print(f"Generating {label} relationship boxplot summary at {boxplot_values_path}")
+    relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
+        parquet_path,
+        boxplot_values_path,
+        boxplot_images_path,
+    )
+    _overview_dataframe(f"{label} relationship boxplot values", relationship_boxplot_df)
+    _overview_csv_file(boxplot_values_path, f"{label} relationship boxplot values CSV")
+
+    relationship_model_text = write_relationship_code_model_report(
+        parquet_path,
+        model_text_path,
+    )
+    return relationship_summary_df, relationship_boxplot_df, relationship_model_text
 
 
 def run_inspection_costs_workflow(
@@ -258,16 +301,25 @@ def run_inspection_costs_workflow(
     steps = list(steps) if steps is not None else None
     scenarios_combined_path = Path(SCENARIOS_COMBINED_PARQUET_PATH)
     scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
+    scenarios_costed_perfect_information_path = Path(SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH)
     relationship_summary_path = Path(RELATIONSHIP_SUMMARY_CSV_PATH)
     relationship_boxplot_values_path = Path(RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
     relationship_boxplot_images_path = Path(RELATIONSHIP_BOXPLOT_IMAGES_DIR)
     relationship_model_text_path = Path(RELATIONSHIP_MODEL_TEXT_PATH)
+    perfect_information_relationship_summary_path = Path(PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH)
+    perfect_information_relationship_boxplot_values_path = Path(PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
+    perfect_information_relationship_boxplot_images_path = Path(PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR)
+    perfect_information_relationship_model_text_path = Path(PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH)
     detection_lookup_table = None
     scenario_component_df = None
     final_df = None
+    perfect_information_final_df = None
     relationship_summary_df = None
     relationship_boxplot_df = None
     relationship_model_text = None
+    perfect_information_relationship_summary_df = None
+    perfect_information_relationship_boxplot_df = None
+    perfect_information_relationship_model_text = None
     start_time = time.perf_counter()
 
     print("Starting inspection costs workflow")
@@ -332,35 +384,71 @@ def run_inspection_costs_workflow(
 
     _overview_parquet_file(scenarios_costed_path, "Costed scenarios parquet")
 
-    print(f"Generating relationship summary at {relationship_summary_path}")
-    relationship_summary_df = _summarize_relationships_from_parquet(scenarios_costed_path)
-    relationship_summary_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Writing relationship summary CSV to {relationship_summary_path}")
-    relationship_summary_df.to_csv(relationship_summary_path, index=False)
-    _overview_dataframe("Relationship summary", relationship_summary_df)
+    if not scenarios_costed_perfect_information_path.exists():
+        if final_df is None:
+            print(f"Loading costed scenarios from {scenarios_costed_path}")
+            final_df = pd.read_parquet(scenarios_costed_path)
+        if final_df is None:
+            raise ValueError("final_df is required when perfect-information scenarios are not saved")
+        print("Filtering costed scenarios for perfect-information subset")
+        perfect_information_final_df = filter_perfect_information_scenarios(final_df)
+        scenarios_costed_perfect_information_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving perfect-information scenarios to {scenarios_costed_perfect_information_path}")
+        perfect_information_final_df.to_parquet(
+            scenarios_costed_perfect_information_path,
+            index=False,
+            compression=PARQUET_COMPRESSION,
+        )
 
-    print(f"Generating relationship boxplot summary at {relationship_boxplot_values_path}")
-    relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
-        scenarios_costed_path,
-        relationship_boxplot_values_path,
-        relationship_boxplot_images_path,
-    )
-    _overview_dataframe("Relationship boxplot values", relationship_boxplot_df)
+    _overview_parquet_file(scenarios_costed_perfect_information_path, "Perfect-information scenarios parquet")
 
-    relationship_model_text = write_relationship_code_model_report(
-        scenarios_costed_path,
-        relationship_model_text_path,
-    )
-    _overview_csv_file(relationship_summary_path, "Relationship summary CSV")
-    _overview_csv_file(relationship_boxplot_values_path, "Relationship boxplot values CSV")
+    relationship_outputs = [
+        {
+            "label": "main",
+            "parquet_path": scenarios_costed_path,
+            "summary_path": relationship_summary_path,
+            "boxplot_values_path": relationship_boxplot_values_path,
+            "boxplot_images_path": relationship_boxplot_images_path,
+            "model_text_path": relationship_model_text_path,
+        },
+        {
+            "label": "perfect-information",
+            "parquet_path": scenarios_costed_perfect_information_path,
+            "summary_path": perfect_information_relationship_summary_path,
+            "boxplot_values_path": perfect_information_relationship_boxplot_values_path,
+            "boxplot_images_path": perfect_information_relationship_boxplot_images_path,
+            "model_text_path": perfect_information_relationship_model_text_path,
+        },
+    ]
+    relationship_results: dict[str, tuple[pd.DataFrame, pd.DataFrame, str]] = {}
+    for output_config in relationship_outputs:
+        relationship_results[output_config["label"]] = _write_relationship_outputs(
+            parquet_path=output_config["parquet_path"],
+            summary_path=output_config["summary_path"],
+            boxplot_values_path=output_config["boxplot_values_path"],
+            boxplot_images_path=output_config["boxplot_images_path"],
+            model_text_path=output_config["model_text_path"],
+            label=output_config["label"],
+        )
+
+    relationship_summary_df, relationship_boxplot_df, relationship_model_text = relationship_results["main"]
+    (
+        perfect_information_relationship_summary_df,
+        perfect_information_relationship_boxplot_df,
+        perfect_information_relationship_model_text,
+    ) = relationship_results["perfect-information"]
     elapsed_seconds = time.perf_counter() - start_time
     print(f"Inspection costs workflow complete in {elapsed_seconds:.2f} seconds")
     return {
         "scenario_component_df": scenario_component_df,
         "final_df": final_df,
+        "perfect_information_final_df": perfect_information_final_df,
         "relationship_summary_df": relationship_summary_df,
         "relationship_boxplot_df": relationship_boxplot_df,
         "relationship_model_text": relationship_model_text,
+        "perfect_information_relationship_summary_df": perfect_information_relationship_summary_df,
+        "perfect_information_relationship_boxplot_df": perfect_information_relationship_boxplot_df,
+        "perfect_information_relationship_model_text": perfect_information_relationship_model_text,
     }
 
 
