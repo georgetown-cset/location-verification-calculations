@@ -910,6 +910,33 @@ def _format_relationship_model_report(
     return "\n".join(lines)
 
 
+def _format_relationship_model_skip_report(
+    *,
+    target_column: str,
+    full_class_counts: dict[str, int],
+    sampled_targets: pd.Series,
+    reason: str,
+) -> str:
+    lines = [
+        f"Target: {target_column}",
+        f"Sampled rows: {len(sampled_targets):,}",
+        "",
+        f"Model not fit: {reason}",
+        "",
+        "Full-data relationship-code counts:",
+    ]
+    for code in sorted(full_class_counts):
+        lines.append(f"  {code}: {full_class_counts[code]:,}")
+
+    sampled_counts = sampled_targets.value_counts().sort_index()
+    if not sampled_counts.empty:
+        lines.extend(["", "Sampled counts:"])
+        for code, count in sampled_counts.items():
+            lines.append(f"  {code}: {int(count):,}")
+
+    return "\n".join(lines)
+
+
 def write_relationship_code_model_report(
     parquet_path: Path,
     output_text_path: Path,
@@ -943,16 +970,27 @@ def write_relationship_code_model_report(
             target_column,
             max_rows_per_class=max_rows_per_class,
         )
-        model_result = _fit_multinomial_logistic_regression(sampled_features, sampled_targets)
-        report_sections.append(
-            _format_relationship_model_report(
-                target_column=target_column,
-                sampled_features=sampled_features,
-                sampled_targets=sampled_targets,
-                full_class_counts=full_class_counts,
-                model_result=model_result,
+        class_labels = sorted(sampled_targets.astype(str).unique().tolist())
+        if len(class_labels) < 2:
+            report_sections.append(
+                _format_relationship_model_skip_report(
+                    target_column=target_column,
+                    full_class_counts=full_class_counts,
+                    sampled_targets=sampled_targets,
+                    reason="fewer than two observed classes were available after filtering",
+                )
             )
-        )
+        else:
+            model_result = _fit_multinomial_logistic_regression(sampled_features, sampled_targets)
+            report_sections.append(
+                _format_relationship_model_report(
+                    target_column=target_column,
+                    sampled_features=sampled_features,
+                    sampled_targets=sampled_targets,
+                    full_class_counts=full_class_counts,
+                    model_result=model_result,
+                )
+            )
         report_sections.append("")
         report_sections.append("-" * 42)
         report_sections.append("")
