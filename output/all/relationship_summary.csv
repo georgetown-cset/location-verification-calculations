@@ -1,15 +1,15 @@
 PLV Type,Relationship Code,Benefit Per Dollar Relationship Description,Benefit Per Dollar Scenario Count
-PLV Renting,a,Physical max benefit per dollar is less than PLV Renting min benefit per dollar,3081746
-PLV Renting,b,Physical max benefit per dollar is within PLV Renting range and Physical min benefit per dollar is below PLV Renting min benefit per dollar,110554
-PLV Renting,c,Physical min and max benefit per dollar are both within PLV Renting range,113335
-PLV Renting,d,Physical min benefit per dollar is within PLV Renting range and Physical max benefit per dollar is above PLV Renting max benefit per dollar,3874
-PLV Renting,e,Physical min benefit per dollar is greater than PLV Renting max benefit per dollar,295
+PLV Renting,a,Physical max benefit per dollar is less than PLV Renting min benefit per dollar,2479057
+PLV Renting,b,Physical max benefit per dollar is within PLV Renting range and Physical min benefit per dollar is below PLV Renting min benefit per dollar,89984
+PLV Renting,c,Physical min and max benefit per dollar are both within PLV Renting range,86959
+PLV Renting,d,Physical min benefit per dollar is within PLV Renting range and Physical max benefit per dollar is above PLV Renting max benefit per dollar,0
+PLV Renting,e,Physical min benefit per dollar is greater than PLV Renting max benefit per dollar,0
 PLV Renting,f,Physical benefit per dollar range spans both sides of PLV Renting range,0
-PLV Renting,Total,All scenarios,3309804
-PLV Owning,a,Physical max benefit per dollar is less than PLV Owning min benefit per dollar,3174720
-PLV Owning,b,Physical max benefit per dollar is within PLV Owning range and Physical min benefit per dollar is below PLV Owning min benefit per dollar,104788
-PLV Owning,c,Physical min and max benefit per dollar are both within PLV Owning range,24824
-PLV Owning,d,Physical min benefit per dollar is within PLV Owning range and Physical max benefit per dollar is above PLV Owning max benefit per dollar,4599
-PLV Owning,e,Physical min benefit per dollar is greater than PLV Owning max benefit per dollar,873
+PLV Renting,Total,All scenarios,2656000
+PLV Owning,a,Physical max benefit per dollar is less than PLV Owning min benefit per dollar,2554010
+PLV Owning,b,Physical max benefit per dollar is within PLV Owning range and Physical min benefit per dollar is below PLV Owning min benefit per dollar,88887
+PLV Owning,c,Physical min and max benefit per dollar are both within PLV Owning range,13103
+PLV Owning,d,Physical min benefit per dollar is within PLV Owning range and Physical max benefit per dollar is above PLV Owning max benefit per dollar,0
+PLV Owning,e,Physical min benefit per dollar is greater than PLV Owning max benefit per dollar,0
 PLV Owning,f,Physical benefit per dollar range spans both sides of PLV Owning range,0
-PLV Owning,Total,All scenarios,3309804
+PLV Owning,Total,All scenarios,2656000
