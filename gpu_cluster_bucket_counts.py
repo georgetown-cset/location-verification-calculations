@@ -12,6 +12,17 @@ DATA_DIR = Path("data")
 SOURCE_CSV_PATH = DATA_DIR / "gpu_clusters.csv"
 OUTPUT_DIR = Path("output")
 OUTPUT_CSV_PATH = OUTPUT_DIR / "gpu_cluster_bucket_counts.csv"
+EXCLUDED_OWNERS = {
+    "amazon",
+    "google",
+    "google deepmind",
+    "microsoft",
+    "meta ai",
+    "oracle",
+    "openai",
+    "stargate (openai)",
+    "xai",
+}
 
 
 def download_source_csv() -> Path:
@@ -27,11 +38,8 @@ def download_source_csv() -> Path:
     return SOURCE_CSV_PATH
 
 
-def load_cluster_quantities() -> pd.Series:
-    """Load the Epoch AI cluster dataset and return one chip-quantity series."""
-    source_csv_path = download_source_csv()
-    df = pd.read_csv(source_csv_path)
-
+def extract_cluster_quantities(df: pd.DataFrame) -> pd.Series:
+    """Return a single chip-quantity series from the dataset."""
     quantity_columns = [
         "Total number of AI chips",
         "Chip quantity (primary)",
@@ -50,6 +58,28 @@ def load_cluster_quantities() -> pd.Series:
         quantities = quantities.fillna(numeric_values)
 
     return quantities
+
+
+def filter_clusters(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply the requested dataset filters before bucket counting."""
+    filtered_df = df.copy()
+
+    country_series = filtered_df["Country"]
+    owner_series = filtered_df["Owner"]
+    status_series = filtered_df["Status"].fillna("").astype(str)
+
+    country_mask = country_series.notna() & ~country_series.isin(
+        {"United States of America", "China"}
+    )
+    owner_mask = owner_series.notna() & ~owner_series.astype(str).apply(
+        lambda owner: any(
+            part.strip().lower() in EXCLUDED_OWNERS
+            for part in owner.split(",")
+        )
+    )
+    status_mask = status_series.eq("Existing")
+
+    return filtered_df[country_mask & owner_mask & status_mask]
 
 
 def build_bucket_summary(quantities: pd.Series) -> pd.DataFrame:
@@ -83,13 +113,17 @@ def build_bucket_summary(quantities: pd.Series) -> pd.DataFrame:
 
 
 def main() -> None:
-    quantities = load_cluster_quantities()
+    source_csv_path = download_source_csv()
+    df = pd.read_csv(source_csv_path)
+    filtered_df = filter_clusters(df)
+    quantities = extract_cluster_quantities(filtered_df)
     summary_df = build_bucket_summary(quantities)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(OUTPUT_CSV_PATH, index=False)
 
-    print("Chip quantity bucket counts")
+    print("Chip quantity bucket counts after filtering")
+    print(f"Total clusters after filters: {len(filtered_df)}")
     print(summary_df.to_string(index=False))
     print(f"\nWrote bucket summary to {OUTPUT_CSV_PATH}")
 
