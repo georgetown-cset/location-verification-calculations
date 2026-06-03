@@ -30,7 +30,7 @@ INCLUDED_PRIMARY_CHIP_TYPES = (
     "NVIDIA GH200",
     "NVIDIA A100",
     "AMD MI300X",
-    "AMD MI250X",
+    "AMD MI250X"
 )
 
 
@@ -101,6 +101,7 @@ def filter_clusters(df: pd.DataFrame) -> pd.DataFrame:
 def build_bucket_summary(df: pd.DataFrame, quantities: pd.Series) -> pd.DataFrame:
     """Count unique cluster names in each chip-quantity bucket."""
     buckets = [
+        ("10 <= X < 100", 10, 100),
         ("100 <= X < 1,000", 100, 1_000),
         ("1,000 <= X < 10,000", 1_000, 10_000),
         ("10,000 <= X < 100,000", 10_000, 100_000),
