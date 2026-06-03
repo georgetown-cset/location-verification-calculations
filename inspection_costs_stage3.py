@@ -129,6 +129,8 @@ def _summarize_relationship_rule_bounds(
             continue
 
         scenario_count = int(len(code_df))
+        feature_clauses: list[str] = []
+        clause_rows: list[dict[str, object]] = []
         for feature_name in feature_columns:
             if feature_name not in code_df.columns:
                 continue
@@ -140,20 +142,44 @@ def _summarize_relationship_rule_bounds(
             observed_max = values.max()
             lower_text = _format_rule_value(observed_min)
             upper_text = _format_rule_value(observed_max)
-            rule_text = f"{lower_text} <= {feature_name} <= {upper_text}"
+            if observed_min == observed_max:
+                clause_text = f"{feature_name} = {lower_text}"
+            else:
+                clause_text = f"{lower_text} <= {feature_name} <= {upper_text}"
+            feature_clauses.append(clause_text)
+            clause_rows.append(
+                {
+                    COLUMN_NAMES['plv_type']: plv_type,
+                    COLUMN_NAMES['relationship_code']: relationship_code,
+                    COLUMN_NAMES['relationship_description']: relationship_labels[relationship_code],
+                    COLUMN_NAMES['scenario_count']: scenario_count,
+                    "Rule Component Index": len(feature_clauses),
+                    "Feature Group": feature_groups[feature_name],
+                    "Feature": feature_name,
+                    "Distinct Values": int(values.nunique(dropna=True)),
+                    "Observed Min": float(observed_min),
+                    "Observed Max": float(observed_max),
+                    "Rule Component": clause_text,
+                }
+            )
 
+        if clause_rows:
+            for clause_row in clause_rows:
+                rows.append(clause_row)
+        else:
             rows.append(
                 {
                     COLUMN_NAMES['plv_type']: plv_type,
                     COLUMN_NAMES['relationship_code']: relationship_code,
                     COLUMN_NAMES['relationship_description']: relationship_labels[relationship_code],
-                    "Feature Group": feature_groups[feature_name],
-                    "Feature": feature_name,
                     COLUMN_NAMES['scenario_count']: scenario_count,
-                    "Distinct Values": int(values.nunique(dropna=True)),
-                    "Observed Min": float(observed_min),
-                    "Observed Max": float(observed_max),
-                    "Rule": rule_text,
+                    "Rule Component Index": 1,
+                    "Feature Group": "N/A",
+                    "Feature": "N/A",
+                    "Distinct Values": 0,
+                    "Observed Min": np.nan,
+                    "Observed Max": np.nan,
+                    "Rule Component": "TRUE",
                 }
             )
 
@@ -164,13 +190,14 @@ def _summarize_relationship_rule_bounds(
                 COLUMN_NAMES['plv_type'],
                 COLUMN_NAMES['relationship_code'],
                 COLUMN_NAMES['relationship_description'],
+                COLUMN_NAMES['scenario_count'],
+                "Rule Component Index",
                 "Feature Group",
                 "Feature",
-                COLUMN_NAMES['scenario_count'],
                 "Distinct Values",
                 "Observed Min",
                 "Observed Max",
-                "Rule",
+                "Rule Component",
             ]
         )
 
@@ -181,7 +208,7 @@ def _summarize_relationship_rule_bounds(
         ordered=True,
     )
     result = result.sort_values(
-        [COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code'], "Feature Group", "Feature"],
+        [COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code'], "Rule Component Index"],
         kind="mergesort",
     ).reset_index(drop=True)
     return result
@@ -201,13 +228,14 @@ def _write_relationship_code_rules_from_dataframes(
                 COLUMN_NAMES['plv_type'],
                 COLUMN_NAMES['relationship_code'],
                 COLUMN_NAMES['relationship_description'],
+                COLUMN_NAMES['scenario_count'],
+                "Rule Component Index",
                 "Feature Group",
                 "Feature",
-                COLUMN_NAMES['scenario_count'],
                 "Distinct Values",
                 "Observed Min",
                 "Observed Max",
-                "Rule",
+                "Rule Component",
             ]
         )
         empty_df.to_csv(output_csv_path, index=False)
