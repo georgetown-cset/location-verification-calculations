@@ -23,6 +23,7 @@ from inspection_costs import (
     COLUMN_NAMES,
     DATA_SAVED_DIR,
     DETECTION_LOOKUP_TABLE_PARQUET_PATH,
+    ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     K_VALS,
     MIN_SHARE_DIVERTED,
     MIX_STEPS,
@@ -33,7 +34,6 @@ from inspection_costs import (
     PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
     PHYSICAL_INSPECTION_M_VALS,
     PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
-    MIN_CLUSTERS_BY_SIZE,
     PLV_DISCOUNT_RATE,
     PLV_M_VALS,
     PLV_OWNING_COST_PER_TOTAL_CHIP,
@@ -50,6 +50,7 @@ from inspection_costs import (
     SCENARIOS_PARQUET_PATH,
     SHARE_OF_CLUSTERS_WITH_SMUGGLING,
     TARGET_CHIPS,
+    get_min_clusters_by_size,
 )
 
 
@@ -126,16 +127,13 @@ def build_mix_data(
     cluster_sizes: Iterable[int],
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
-    min_clusters_by_size: Optional[dict[int, int]] = None,
+    additional_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
 ) -> list[list[dict[str, int]]]:
     if steps is None:
         steps = MIX_STEPS
-    if min_clusters_by_size is None:
-        min_clusters_by_size = MIN_CLUSTERS_BY_SIZE
-
     cluster_sizes = list(cluster_sizes)
     steps = list(steps)
-    min_clusters_by_size = {int(cluster_size): int(min_count) for cluster_size, min_count in min_clusters_by_size.items()}
+    min_clusters_by_size = _resolve_min_clusters_by_size(additional_min_clusters_by_size)
     unknown_cluster_sizes = sorted(set(min_clusters_by_size) - set(cluster_sizes))
     if unknown_cluster_sizes:
         raise ValueError(
@@ -186,6 +184,18 @@ def build_mix_data(
 
     print(f"build_mix_data: completed with {len(valid_mixes)} valid mixes")
     return valid_mixes
+
+
+def _resolve_min_clusters_by_size(
+    additional_min_clusters_by_size: Optional[dict[int, int]] = None,
+) -> dict[int, int]:
+    resolved = get_min_clusters_by_size()
+    if additional_min_clusters_by_size is not None:
+        for cluster_size, min_count in additional_min_clusters_by_size.items():
+            cluster_size = int(cluster_size)
+            min_count = int(min_count)
+            resolved[cluster_size] = resolved.get(cluster_size, 0) + min_count
+    return resolved
 
 
 def _mix_satisfies_minimum_cluster_counts(
@@ -323,7 +333,7 @@ def build_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
-    min_clusters_by_size: Optional[dict[int, int]] = None,
+    additional_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
     plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
@@ -340,7 +350,7 @@ def build_scenarios(
         cluster_sizes=cluster_sizes,
         target_chips=target_chips,
         steps=steps,
-        min_clusters_by_size=min_clusters_by_size,
+        additional_min_clusters_by_size=additional_min_clusters_by_size,
     )
     print(f"build_scenarios: received {len(mix_data)} mixes from build_mix_data")
     detection_grouped = _group_detection_lookup(detection_lookup_table)

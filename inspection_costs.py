@@ -86,15 +86,15 @@ def load_min_clusters_by_size_from_csv(
 ) -> dict[int, int]:
     csv_path = Path(csv_path)
     bucket_counts_df = pd.read_csv(csv_path)
-    required_columns = {"lower_bound", "cluster_count"}
+    required_columns = {"lower_bound", "unique_name_count"}
     missing_columns = required_columns - set(bucket_counts_df.columns)
     if missing_columns:
         raise ValueError(
             f"{csv_path} is missing required columns: {sorted(missing_columns)}"
         )
-
+    
     result: dict[int, int] = {}
-    for lower_bound, cluster_count in bucket_counts_df.loc[:, ["lower_bound", "cluster_count"]].itertuples(index=False, name=None):
+    for lower_bound, cluster_count in bucket_counts_df.loc[:, ["lower_bound", "unique_name_count"]].itertuples(index=False, name=None):
         if pd.isna(lower_bound) or pd.isna(cluster_count):
             continue
         result[int(lower_bound)] = int(cluster_count)
