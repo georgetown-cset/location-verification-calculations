@@ -23,6 +23,15 @@ EXCLUDED_OWNERS = {
     "stargate (openai)",
     "xai",
 }
+INCLUDED_PRIMARY_CHIP_TYPES = (
+    "NVIDIA GB200",
+    "NVIDIA B200",
+    "NVIDIA H100",
+    "NVIDIA GH200",
+    "NVIDIA A100",
+    "AMD MI300X",
+    "AMD MI250X",
+)
 
 
 def download_source_csv() -> Path:
@@ -67,6 +76,7 @@ def filter_clusters(df: pd.DataFrame) -> pd.DataFrame:
     country_series = filtered_df["Country"].fillna("")
     owner_series = filtered_df["Owner"].fillna("")
     status_series = filtered_df["Status"].fillna("").astype(str)
+    chip_type_series = filtered_df["Chip type (primary)"].fillna("").astype(str)
 
     country_mask = ~country_series.astype(str).isin(
         {"United States of America", "China"}
@@ -78,8 +88,14 @@ def filter_clusters(df: pd.DataFrame) -> pd.DataFrame:
         )
     )
     status_mask = status_series.eq("Existing")
+    chip_type_mask = chip_type_series.apply(
+        lambda chip_type: any(
+            chip_type.casefold().find(chip.casefold()) != -1
+            for chip in INCLUDED_PRIMARY_CHIP_TYPES
+        )
+    )
 
-    return filtered_df[country_mask & owner_mask & status_mask]
+    return filtered_df[country_mask & owner_mask & status_mask & chip_type_mask]
 
 
 def build_bucket_summary(df: pd.DataFrame, quantities: pd.Series) -> pd.DataFrame:
