@@ -20,7 +20,7 @@ PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2545, 5900)
 PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV benefits.
-MIN_SHARE_DIVERTED = 0.1  # Minimum allowed share diverted (K / N) for each scenario component in mix scenarios.
+MIN_SHARE_DIVERTED = 0.1  # Minimum allowed share diverted (K / N) for each component of each scenario.
 
 MIX_STEP_SIZE = 0.1
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
@@ -69,15 +69,12 @@ PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
-_MIN_CLUSTERS_BY_SIZE_CACHE: dict[int, int] | None = None
 
 
 def ensure_gpu_cluster_bucket_counts() -> Path:
-    global _MIN_CLUSTERS_BY_SIZE_CACHE
     csv_path = GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH
     script_path = Path(__file__).with_name("gpu_cluster_bucket_counts.py")
     subprocess.run([sys.executable, str(script_path)], check=True)
-    _MIN_CLUSTERS_BY_SIZE_CACHE = None
     return csv_path
 
 
@@ -102,11 +99,8 @@ def load_min_clusters_by_size_from_csv(
 
 
 def get_min_clusters_by_size() -> dict[int, int]:
-    global _MIN_CLUSTERS_BY_SIZE_CACHE
-    if _MIN_CLUSTERS_BY_SIZE_CACHE is None:
-        ensure_gpu_cluster_bucket_counts()
-        _MIN_CLUSTERS_BY_SIZE_CACHE = load_min_clusters_by_size_from_csv()
-    return dict(_MIN_CLUSTERS_BY_SIZE_CACHE)
+    ensure_gpu_cluster_bucket_counts()
+    return load_min_clusters_by_size_from_csv()
 
 COLUMN_NAMES = {
     "mix_id": "Mix ID",
@@ -348,7 +342,7 @@ def run_inspection_costs_workflow(
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
     k_vals: Iterable[int] = K_VALS,
     n_vals: Iterable[int] = N_VALS,
-    additional_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
+    extra_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
     plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
@@ -359,6 +353,12 @@ def run_inspection_costs_workflow(
     plv_owning_cost_per_total_chip: tuple[float, float] = PLV_OWNING_COST_PER_TOTAL_CHIP,
 ) -> dict[str, object]:
     ensure_gpu_cluster_bucket_counts()
+    min_clusters_by_size = get_min_clusters_by_size()
+    if extra_min_clusters_by_size is not None:
+        for cluster_size, min_count in extra_min_clusters_by_size.items():
+            cluster_size = int(cluster_size)
+            min_count = int(min_count)
+            min_clusters_by_size[cluster_size] = min_clusters_by_size.get(cluster_size, 0) + min_count
 
     from inspection_costs_stage1 import (
         _overview_dataframe,
@@ -424,7 +424,7 @@ def run_inspection_costs_workflow(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
-        additional_min_clusters_by_size=additional_min_clusters_by_size,
+        min_clusters_by_size=min_clusters_by_size,
         physical_m_vals=physical_m_vals,
         plv_m_vals=plv_m_vals,
         target_chips=target_chips,
