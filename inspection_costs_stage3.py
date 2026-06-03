@@ -151,6 +151,14 @@ def _summarize_relationship_rule_bounds(
             "source_columns": ["component_cluster_count_min", "component_cluster_count_max"],
         },
     ]
+    feature_specs = [
+        feature_spec
+        for feature_spec in feature_specs
+        if pd.concat(
+            [pd.to_numeric(source_df[column_name], errors="coerce") for column_name in feature_spec["source_columns"] if column_name in source_df.columns],
+            ignore_index=True,
+        ).dropna().nunique() > 1
+    ]
     rows: list[dict[str, object]] = []
 
     relationship_values = source_df[relationship_code_column].astype(str)
