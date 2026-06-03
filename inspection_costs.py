@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -26,6 +28,17 @@ K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster wit
 N_VALS = [0, 1, 10, 100, 1000]  # Tests conducted on a cluster.
 PHYSICAL_INSPECTION_M_VALS = [0.05]  # Miss probability for a physical inspection test.
 PLV_M_VALS = [0.1]  # Miss probability for a PLV test.
+ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
+    # One relevant cluster is present in Epoch AI's Frontier Data Centers but missing from Epoch's GPU Clusters dataset.
+    # Relevant cluster means a GPU cluster that is:
+        # (a) not located in the U.S. or China, 
+        # (b) is not owned by a U.S. cloud service provider or AI lab, 
+        # (c) is currently operational or expected to be operational by the end of 2026, and
+        # (d) deploys (or will deploy) export controlled chips
+    # Missing clusters: DayOne Nusajaya
+    # Epoch AI estimates that DayOne Nusajaya will have ~179k export controlled chips by Oct 2026.
+    100_000: 1
+}
 
 MIX_STEPS = np.linspace(
     0.0,
@@ -56,17 +69,22 @@ PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
+_MIN_CLUSTERS_BY_SIZE_CACHE: dict[int, int] | None = None
+
+
+def ensure_gpu_cluster_bucket_counts() -> Path:
+    global _MIN_CLUSTERS_BY_SIZE_CACHE
+    csv_path = GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH
+    script_path = Path(__file__).with_name("gpu_cluster_bucket_counts.py")
+    subprocess.run([sys.executable, str(script_path)], check=True)
+    _MIN_CLUSTERS_BY_SIZE_CACHE = None
+    return csv_path
 
 
 def load_min_clusters_by_size_from_csv(
     csv_path: str | Path = GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH,
 ) -> dict[int, int]:
     csv_path = Path(csv_path)
-    if not csv_path.exists():
-        raise FileNotFoundError(
-            f"Could not load minimum cluster counts because the bucket summary CSV was not found at {csv_path}"
-        )
-
     bucket_counts_df = pd.read_csv(csv_path)
     required_columns = {"lower_bound", "cluster_count"}
     missing_columns = required_columns - set(bucket_counts_df.columns)
@@ -83,7 +101,12 @@ def load_min_clusters_by_size_from_csv(
     return result
 
 
-MIN_CLUSTERS_BY_SIZE = load_min_clusters_by_size_from_csv()
+def get_min_clusters_by_size() -> dict[int, int]:
+    global _MIN_CLUSTERS_BY_SIZE_CACHE
+    if _MIN_CLUSTERS_BY_SIZE_CACHE is None:
+        ensure_gpu_cluster_bucket_counts()
+        _MIN_CLUSTERS_BY_SIZE_CACHE = load_min_clusters_by_size_from_csv()
+    return dict(_MIN_CLUSTERS_BY_SIZE_CACHE)
 
 COLUMN_NAMES = {
     "mix_id": "Mix ID",
@@ -325,7 +348,7 @@ def run_inspection_costs_workflow(
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
     k_vals: Iterable[int] = K_VALS,
     n_vals: Iterable[int] = N_VALS,
-    min_clusters_by_size: dict[int, int] = MIN_CLUSTERS_BY_SIZE,
+    additional_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
     plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
@@ -335,6 +358,8 @@ def run_inspection_costs_workflow(
     plv_renting_cost_per_total_chip: tuple[float, float] = PLV_RENTING_COST_PER_TOTAL_CHIP,
     plv_owning_cost_per_total_chip: tuple[float, float] = PLV_OWNING_COST_PER_TOTAL_CHIP,
 ) -> dict[str, object]:
+    ensure_gpu_cluster_bucket_counts()
+
     from inspection_costs_stage1 import (
         _overview_dataframe,
         _overview_parquet_dataset,
@@ -399,7 +424,7 @@ def run_inspection_costs_workflow(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
-        min_clusters_by_size=min_clusters_by_size,
+        additional_min_clusters_by_size=additional_min_clusters_by_size,
         physical_m_vals=physical_m_vals,
         plv_m_vals=plv_m_vals,
         target_chips=target_chips,
@@ -513,4 +538,5 @@ def run_inspection_costs_workflow(
 
 
 if __name__ == "__main__":
+    ensure_gpu_cluster_bucket_counts()
     run_inspection_costs_workflow()
