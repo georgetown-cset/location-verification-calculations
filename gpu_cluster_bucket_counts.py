@@ -1,18 +1,36 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
+from urllib.request import urlopen
 
 import pandas as pd
 
 
 SOURCE_URL = "https://epoch.ai/data/gpu_clusters.csv"
+DATA_DIR = Path("data")
+SOURCE_CSV_PATH = DATA_DIR / "gpu_clusters.csv"
 OUTPUT_DIR = Path("output")
 OUTPUT_CSV_PATH = OUTPUT_DIR / "gpu_cluster_bucket_counts.csv"
 
 
+def download_source_csv() -> Path:
+    """Download the source CSV once and reuse the cached local copy."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    if SOURCE_CSV_PATH.exists():
+        return SOURCE_CSV_PATH
+
+    with urlopen(SOURCE_URL) as response, SOURCE_CSV_PATH.open("wb") as output_file:
+        shutil.copyfileobj(response, output_file)
+
+    return SOURCE_CSV_PATH
+
+
 def load_cluster_quantities() -> pd.Series:
-    """Download the Epoch AI cluster dataset and return one chip-quantity series."""
-    df = pd.read_csv(SOURCE_URL)
+    """Load the Epoch AI cluster dataset and return one chip-quantity series."""
+    source_csv_path = download_source_csv()
+    df = pd.read_csv(source_csv_path)
 
     quantity_columns = [
         "Total number of AI chips",
