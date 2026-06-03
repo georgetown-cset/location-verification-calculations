@@ -55,6 +55,36 @@ PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUT
 PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_model.txt"
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
+GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
+
+
+def load_min_clusters_by_size_from_csv(
+    csv_path: str | Path = GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH,
+) -> dict[int, int]:
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"Could not load minimum cluster counts because the bucket summary CSV was not found at {csv_path}"
+        )
+
+    bucket_counts_df = pd.read_csv(csv_path)
+    required_columns = {"lower_bound", "cluster_count"}
+    missing_columns = required_columns - set(bucket_counts_df.columns)
+    if missing_columns:
+        raise ValueError(
+            f"{csv_path} is missing required columns: {sorted(missing_columns)}"
+        )
+
+    result: dict[int, int] = {}
+    for lower_bound, cluster_count in bucket_counts_df.loc[:, ["lower_bound", "cluster_count"]].itertuples(index=False, name=None):
+        if pd.isna(lower_bound) or pd.isna(cluster_count):
+            continue
+        result[int(lower_bound)] = int(cluster_count)
+    return result
+
+
+MIN_CLUSTERS_BY_SIZE = load_min_clusters_by_size_from_csv()
+
 COLUMN_NAMES = {
     "mix_id": "Mix ID",
     "scenario_id": "Scenario ID",
@@ -295,6 +325,7 @@ def run_inspection_costs_workflow(
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
     k_vals: Iterable[int] = K_VALS,
     n_vals: Iterable[int] = N_VALS,
+    min_clusters_by_size: dict[int, int] = MIN_CLUSTERS_BY_SIZE,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
     plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
@@ -368,6 +399,7 @@ def run_inspection_costs_workflow(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
+        min_clusters_by_size=min_clusters_by_size,
         physical_m_vals=physical_m_vals,
         plv_m_vals=plv_m_vals,
         target_chips=target_chips,

@@ -33,10 +33,13 @@ from inspection_costs import (
     PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
     PHYSICAL_INSPECTION_M_VALS,
     PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
+    MIN_CLUSTERS_BY_SIZE,
     PLV_DISCOUNT_RATE,
     PLV_M_VALS,
     PLV_OWNING_COST_PER_TOTAL_CHIP,
     PLV_RENTING_COST_PER_TOTAL_CHIP,
+    ALL_OUTPUT_DIR,
+    PERFECT_INFORMATION_OUTPUT_DIR,
     RELATIONSHIP_BOXPLOT_IMAGES_DIR,
     RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH,
     RELATIONSHIP_MODEL_TEXT_PATH,
@@ -123,13 +126,28 @@ def build_mix_data(
     cluster_sizes: Iterable[int],
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
+    min_clusters_by_size: Optional[dict[int, int]] = None,
 ) -> list[list[dict[str, int]]]:
     if steps is None:
         steps = MIX_STEPS
+    if min_clusters_by_size is None:
+        min_clusters_by_size = MIN_CLUSTERS_BY_SIZE
 
     cluster_sizes = list(cluster_sizes)
     steps = list(steps)
+    min_clusters_by_size = {int(cluster_size): int(min_count) for cluster_size, min_count in min_clusters_by_size.items()}
+    unknown_cluster_sizes = sorted(set(min_clusters_by_size) - set(cluster_sizes))
+    if unknown_cluster_sizes:
+        raise ValueError(
+            "build_mix_data: min_clusters_by_size contains cluster sizes that are not present in cluster_sizes: "
+            f"{unknown_cluster_sizes}"
+        )
+    negative_minimums = {cluster_size: min_count for cluster_size, min_count in min_clusters_by_size.items() if min_count < 0}
+    if negative_minimums:
+        raise ValueError(f"build_mix_data: minimum cluster counts must be non-negative: {negative_minimums}")
     print(f"build_mix_data: generating mixes for {len(cluster_sizes)} cluster sizes and target {target_chips} chips")
+    if min_clusters_by_size:
+        print(f"build_mix_data: applying minimum cluster constraints {min_clusters_by_size}")
     valid_mixes: list[list[dict[str, int]]] = []
     seen_mix_ids: set[str] = set()
     for _mix_index, proportions in _iter_valid_mix_proportions(steps, len(cluster_sizes)):
@@ -147,22 +165,44 @@ def build_mix_data(
                 }
             )
 
-        if current_mix:
-            current_mix.sort(key=lambda component: component[COLUMN_NAMES['cluster_size']])
-            mix_id = build_mix_id(current_mix)
-            if mix_id in seen_mix_ids:
-                continue
-            for component in current_mix:
-                component[COLUMN_NAMES['mix_id']] = mix_id
-            valid_mixes.append(current_mix)
-            seen_mix_ids.add(mix_id)
-            print(
-                f"build_mix_data: accepted {mix_id} with {len(current_mix)} components; "
-                f"total valid mixes={len(valid_mixes)}"
-            )
+        if not current_mix:
+            continue
+
+        if not _mix_satisfies_minimum_cluster_counts(current_mix, min_clusters_by_size):
+            continue
+
+        current_mix.sort(key=lambda component: component[COLUMN_NAMES['cluster_size']])
+        mix_id = build_mix_id(current_mix)
+        if mix_id in seen_mix_ids:
+            continue
+        for component in current_mix:
+            component[COLUMN_NAMES['mix_id']] = mix_id
+        valid_mixes.append(current_mix)
+        seen_mix_ids.add(mix_id)
+        print(
+            f"build_mix_data: accepted {mix_id} with {len(current_mix)} components; "
+            f"total valid mixes={len(valid_mixes)}"
+        )
 
     print(f"build_mix_data: completed with {len(valid_mixes)} valid mixes")
     return valid_mixes
+
+
+def _mix_satisfies_minimum_cluster_counts(
+    mix_components: list[dict[str, int]],
+    min_clusters_by_size: dict[int, int],
+) -> bool:
+    if not min_clusters_by_size:
+        return True
+
+    counts_by_size = {
+        int(component[COLUMN_NAMES['cluster_size']]): int(component[COLUMN_NAMES['number_of_clusters']])
+        for component in mix_components
+    }
+    return all(
+        counts_by_size.get(int(cluster_size), 0) >= int(min_count)
+        for cluster_size, min_count in min_clusters_by_size.items()
+    )
 
 
 def _iter_valid_mix_proportions(steps: list[float], dimensions: int) -> Iterable[tuple[int, tuple[float, ...]]]:
@@ -283,6 +323,7 @@ def build_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
+    min_clusters_by_size: Optional[dict[int, int]] = None,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
     plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
@@ -295,7 +336,12 @@ def build_scenarios(
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
     print(f"build_scenarios: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
-    mix_data = build_mix_data(cluster_sizes=cluster_sizes, target_chips=target_chips, steps=steps)
+    mix_data = build_mix_data(
+        cluster_sizes=cluster_sizes,
+        target_chips=target_chips,
+        steps=steps,
+        min_clusters_by_size=min_clusters_by_size,
+    )
     print(f"build_scenarios: received {len(mix_data)} mixes from build_mix_data")
     detection_grouped = _group_detection_lookup(detection_lookup_table)
     k_options_by_cluster_size = {
@@ -529,7 +575,8 @@ def _reset_workflow_artifacts() -> None:
     for path in (
         Path(DATA_SAVED_DIR),
         Path(SCENARIOS_PARQUET_PATH),
-        Path(OUTPUT_DIR),
+        Path(ALL_OUTPUT_DIR),
+        Path(PERFECT_INFORMATION_OUTPUT_DIR),
     ):
         _clear_directory(path)
 
