@@ -53,6 +53,7 @@ from inspection_costs import (
 )
 
 
+# Compute the hypergeometric probability of drawing exactly x diverted chips in n tests.
 def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
     if x < 0 or x > K or x > n:
         return 0.0
@@ -63,6 +64,7 @@ def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
     return math.comb(K, x) * math.comb(N - K, n - x) / math.comb(N, n)
 
 
+# Calculate the chance that testing detects at least one diverted chip in a cluster.
 def p_detect_cluster_diversion(N: int, n: int, K: int, m: float) -> dict[str, float]:
     if K == 0 or n == 0:
         return {"p_success": 0.0, "p_failure": 1.0}
@@ -72,6 +74,7 @@ def p_detect_cluster_diversion(N: int, n: int, K: int, m: float) -> dict[str, fl
     return {"p_success": 1 - p_failure, "p_failure": p_failure}
 
 
+# Convert a detection probability into expected diverted chips identified for a cluster.
 def expected_value_detected_diversion(N: int, n: int, K: int, m: float) -> dict[str, float]:
     p_detect = p_detect_cluster_diversion(N=N, n=n, K=K, m=m)["p_success"]
     return {
@@ -80,6 +83,7 @@ def expected_value_detected_diversion(N: int, n: int, K: int, m: float) -> dict[
     }
 
 
+# Build and optionally persist the lookup table of detection outcomes for each N, K, n, and m combination.
 def build_detection_lookup_table(
     cluster_sizes: Iterable[int],
     K_vals: Iterable[int],
@@ -122,6 +126,7 @@ def build_detection_lookup_table(
     return result
 
 
+# Enumerate valid cluster-size mixes that sum to the target chip count and satisfy minimum constraints.
 def build_mix_data(
     cluster_sizes: Iterable[int],
     target_chips: int = TARGET_CHIPS,
@@ -186,6 +191,7 @@ def build_mix_data(
     return valid_mixes
 
 
+# Check whether a proposed mix includes enough clusters in each constrained size bucket.
 def _mix_satisfies_minimum_cluster_counts(
     mix_components: list[dict[str, int]],
     min_clusters_by_size: dict[int, int],
@@ -203,6 +209,7 @@ def _mix_satisfies_minimum_cluster_counts(
     )
 
 
+# Yield proportion vectors whose entries sum to one, using integer step units when possible.
 def _iter_valid_mix_proportions(steps: list[float], dimensions: int) -> Iterable[tuple[int, tuple[float, ...]]]:
     if not steps or dimensions <= 0:
         return
@@ -226,6 +233,7 @@ def _iter_valid_mix_proportions(steps: list[float], dimensions: int) -> Iterable
     index_stack: list[int] = []
     proportion_stack: list[float] = []
 
+    # Recursively prune impossible partial proportion vectors before materializing full products.
     def visit(depth: int, unit_total: int) -> Iterable[tuple[int, tuple[float, ...]]]:
         remaining = dimensions - depth
         if unit_total - unit_tolerance > target_units or unit_total + suffix_max[depth] + unit_tolerance < target_units:
@@ -249,6 +257,7 @@ def _iter_valid_mix_proportions(steps: list[float], dimensions: int) -> Iterable
     yield from visit(0, 0)
 
 
+# Convert floating-point mix steps into exact integer units when the step grid supports it.
 def _integer_step_units(steps: list[float]) -> Optional[tuple[list[int], int, int]]:
     fractions = [Fraction(float(step)).limit_denominator(1_000_000) for step in steps]
     denominators = [fraction.denominator for fraction in fractions]
@@ -262,12 +271,14 @@ def _integer_step_units(steps: list[float]) -> Optional[tuple[list[int], int, in
     return None
 
 
+# Fall back to brute-force product enumeration for step grids that cannot be represented as integer units.
 def _iter_valid_mix_proportions_brute_force(steps: list[float], dimensions: int) -> Iterable[tuple[int, tuple[float, ...]]]:
     for mix_index, proportions in enumerate(itertools.product(steps, repeat=dimensions)):
         if np.isclose(sum(proportions), 1.0):
             yield mix_index, proportions
 
 
+# Convert a vector of step indices into the same flat index used by itertools.product enumeration.
 def _product_index(indices: list[int], base: int) -> int:
     mix_index = 0
     for index in indices:
@@ -275,10 +286,12 @@ def _product_index(indices: list[int], base: int) -> int:
     return mix_index
 
 
+# Build a readable description of the cluster sizes and counts in a mix.
 def build_mix_description(mix_components: list[dict[str, int]]) -> str:
     return " + ".join(f"{component[COLUMN_NAMES['number_of_clusters']]}x(N={component[COLUMN_NAMES['cluster_size']]})" for component in mix_components)
 
 
+# Build a stable identifier from the sorted cluster sizes and counts in a mix.
 def build_mix_id(mix_components: list[dict[str, int]]) -> str:
     mix_components = sorted(mix_components, key=lambda component: component[COLUMN_NAMES['cluster_size']])
     characteristics = "_".join(
@@ -288,12 +301,14 @@ def build_mix_id(mix_components: list[dict[str, int]]) -> str:
     return f"ClusterMix_{characteristics}"
 
 
+# Estimate how many clusters in a component contain smuggling activity.
 def _number_of_clusters_with_smuggling(number_of_clusters: int) -> int:
     if number_of_clusters <= 1:
         return int(number_of_clusters)
     return max(1, int(math.floor(number_of_clusters * SHARE_OF_CLUSTERS_WITH_SMUGGLING + 0.5)))
 
 
+# Reshape the detection lookup table into nested dictionaries for fast scenario generation.
 def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]]:
     grouped: dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]] = {}
     columns = [
@@ -317,6 +332,7 @@ def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[
     return grouped
 
 
+# Generate scenario-component rows for every valid mix, diversion amount, test count, and miss-probability pair.
 def build_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
@@ -358,6 +374,7 @@ def build_scenarios(
         component_dataset_path = parquet_path
         _ensure_scenarios_dataset_path(component_dataset_path)
         for mix_components in mix_data:
+            # Each mix is generated and written independently to keep peak memory use bounded.
             mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
             mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
                 mix_components=mix_components,
@@ -425,6 +442,7 @@ def build_scenarios(
     return pd.DataFrame(columns=SCENARIO_COLUMNS)
 
 
+# Write one mix's scenario-component records as a parquet fragment in the scenario dataset.
 def _write_scenario_dataset_to_parquet(
     *,
     dataset_path: Path,
@@ -446,6 +464,7 @@ def _write_scenario_dataset_to_parquet(
     return [mix_parquet_path]
 
 
+# Expand one cluster mix into all scenario-component records and count the scenario rows produced.
 def _build_mix_records(
     *,
     mix_components: list[dict[str, int]],
@@ -491,6 +510,7 @@ def _build_mix_records(
                 break
             n_options_per_component.append(tuple(sorted(n_options)))
         else:
+            # Once every component has valid K and n options, cross product them into concrete scenarios.
             for n_combo_count, n_combo in enumerate(itertools.product(*n_options_per_component), start=1):
                 for physical_m_val in physical_m_vals:
                     for plv_m_val in plv_m_vals:
@@ -557,6 +577,7 @@ def _build_mix_records(
     return scenario_component_records, scenario_counter, len(scenario_component_records)
 
 
+# Remove any existing parquet fragments for a mix before writing replacement records.
 def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
     mix_dir = mix_parquet_path.parent
     fragment_stem = mix_parquet_path.stem
@@ -565,10 +586,12 @@ def _clear_existing_mix_files(mix_parquet_path: Path) -> None:
             existing_path.unlink()
 
 
+# Delete a workflow artifact directory if it exists.
 def _clear_directory(path: Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
+# Clear cached data and output directories so each workflow run starts from fresh artifacts.
 def _reset_workflow_artifacts() -> None:
     for path in (
         Path(DATA_SAVED_DIR),
@@ -579,9 +602,11 @@ def _reset_workflow_artifacts() -> None:
         _clear_directory(path)
 
 
+# Create an empty Arrow table with the scenario-component schema.
 def _empty_arrow_table(pa, schema):
     return pa.Table.from_arrays([pa.array([], type=field.type) for field in schema], schema=schema)
 
+# Ensure the scenario output location is a parquet dataset directory, not a single file.
 def _ensure_scenarios_dataset_path(parquet_path: Path) -> None:
     if parquet_path.exists() and not parquet_path.is_dir():
         raise ValueError(
@@ -591,6 +616,7 @@ def _ensure_scenarios_dataset_path(parquet_path: Path) -> None:
     parquet_path.mkdir(parents=True, exist_ok=True)
 
 
+# Build the shard path and parquet filename for a mix-specific scenario fragment.
 def _mix_parquet_path(parquet_path: Path, mix_id: str) -> Path:
     safe_mix_id = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in mix_id)
     shard = _mix_id_shard(safe_mix_id)
@@ -599,6 +625,7 @@ def _mix_parquet_path(parquet_path: Path, mix_id: str) -> Path:
     return mix_dir / f"{safe_mix_id}.parquet"
 
 
+# Choose a simple shard directory from the first mix component to avoid too many files in one folder.
 def _mix_id_shard(safe_mix_id: str) -> str:
     if safe_mix_id.startswith("ClusterMix_"):
         safe_mix_id = safe_mix_id.removeprefix("ClusterMix_")
@@ -606,10 +633,12 @@ def _mix_id_shard(safe_mix_id: str) -> str:
     return first_component or "unknown"
 
 
+# Convert tuple records into an Arrow table using the provided schema.
 def _records_to_arrow_table(records: list[tuple[object, ...]], pa, schema):
     return pa.Table.from_arrays([pa.array(values) for values in zip(*records)], schema=schema)
 
 
+# Import pyarrow lazily so callers using only in-memory paths do not need it at import time.
 def _import_pyarrow_parquet():
     try:
         import pyarrow as pa
@@ -623,6 +652,7 @@ def _import_pyarrow_parquet():
     return pq, pa
 
 
+# Stream a parquet file in pandas DataFrame batches for memory-bounded downstream summaries.
 def _iter_parquet_batches(
     parquet_path: Path,
     columns: Iterable[str],
@@ -634,6 +664,7 @@ def _iter_parquet_batches(
         yield batch.to_pandas()
 
 
+# Print a compact row, column, and preview summary for a DataFrame.
 def _overview_dataframe(name: str, df: pd.DataFrame, max_rows: int = 5) -> None:
     print(f"\n{name}")
     print(f"Rows: {len(df):,}; columns: {len(df.columns):,}")
@@ -643,6 +674,7 @@ def _overview_dataframe(name: str, df: pd.DataFrame, max_rows: int = 5) -> None:
         print(df.head(max_rows))
 
 
+# Print row, column, and preview details for a single parquet file.
 def _overview_parquet_file(path: Path, name: str, max_rows: int = 5) -> None:
     print(f"\n{name}: {path}")
     pq, _pa = _import_pyarrow_parquet()
@@ -654,6 +686,7 @@ def _overview_parquet_file(path: Path, name: str, max_rows: int = 5) -> None:
         break
 
 
+# Print aggregate row, file, column, and preview details for a parquet dataset directory.
 def _overview_parquet_dataset(path: Path, name: str, max_rows: int = 5) -> None:
     print(f"\n{name}: {path}")
     parquet_paths = sorted(path.rglob("*.parquet")) if path.is_dir() else [path]
@@ -678,6 +711,7 @@ def _overview_parquet_dataset(path: Path, name: str, max_rows: int = 5) -> None:
     print(preview_df.head(max_rows) if not preview_df.empty else "(empty)")
 
 
+# Print row, column, and preview details for a CSV output file.
 def _overview_csv_file(path: Path, name: str, max_rows: int = 5) -> None:
     print(f"\n{name}: {path}")
     preview_df = pd.read_csv(path, nrows=max_rows)
@@ -686,6 +720,8 @@ def _overview_csv_file(path: Path, name: str, max_rows: int = 5) -> None:
     row_count = max(0, row_count - 1)
     print(f"Rows: {row_count:,}; columns: {len(preview_df.columns):,}")
     print(preview_df if not preview_df.empty else "(empty)")
+
+# Define the Arrow schema used for scenario-component parquet fragments.
 def _final_scenario_component_arrow_schema(pa):
     return pa.schema(
         [

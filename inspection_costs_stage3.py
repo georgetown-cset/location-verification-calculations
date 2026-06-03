@@ -29,6 +29,7 @@ from inspection_costs_stage1 import (
     _iter_parquet_batches,
 )
 
+# Format a numeric or missing value for human-readable rule clauses.
 def _format_rule_value(value: object) -> str:
     if pd.isna(value):
         return "NA"
@@ -42,6 +43,7 @@ def _format_rule_value(value: object) -> str:
     return str(value)
 
 
+# Join scenario-level rows with component-level min/max fields used to describe relationship rules.
 def _build_relationship_rule_frame(
     scenario_df: pd.DataFrame,
     scenario_component_df: pd.DataFrame,
@@ -87,6 +89,7 @@ def _build_relationship_rule_frame(
     return source_df
 
 
+# Summarize observed feature bounds for each relationship code and PLV variant.
 def _summarize_relationship_rule_bounds(
     source_df: pd.DataFrame,
     *,
@@ -161,6 +164,7 @@ def _summarize_relationship_rule_bounds(
     ]
     rows: list[dict[str, object]] = []
 
+    # Each relationship code gets a list of simple observed-range clauses for the varying features.
     relationship_values = source_df[relationship_code_column].astype(str)
     for relationship_code in RELATIONSHIP_CODE_ORDER:
         code_mask = relationship_values == relationship_code
@@ -259,6 +263,7 @@ def _summarize_relationship_rule_bounds(
     return result
 
 
+# Write the relationship-code rule summary CSV for all PLV variants present in the scenario data.
 def _write_relationship_code_rules_from_dataframes(
     *,
     scenario_df: pd.DataFrame,
@@ -308,6 +313,7 @@ def _write_relationship_code_rules_from_dataframes(
     return result
 
 
+# Count relationship-code frequencies from a cached costed scenario parquet file.
 def _summarize_relationships_from_parquet(
     parquet_path: Path,
     batch_size: int = 65_536,
@@ -358,6 +364,7 @@ def _summarize_relationships_from_parquet(
     return result.sort_values([COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code']]).reset_index(drop=True)
 
 
+# Return tidy raw rows for box plots split by relationship category, PLV variant, and metric family.
 def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFrame:
     """Return tidy raw rows for box plots split by relationship category, PLV variant, and metric family."""
 
@@ -453,6 +460,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
     return boxplot_df
 
 
+# Return box-plot summary statistics for each metric family and relationship group.
 def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.DataFrame:
     """Return box-plot summary statistics for each metric family and relationship group."""
 
@@ -506,6 +514,7 @@ def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.Da
     ].sort_values(group_columns).reset_index(drop=True)
 
 
+# Convert a label into a conservative filename stem for generated image outputs.
 def _slugify_filename(value: str) -> str:
     slug = "".join(character.lower() if character.isalnum() else "_" for character in value)
     while "__" in slug:
@@ -513,6 +522,7 @@ def _slugify_filename(value: str) -> str:
     return slug.strip("_")
 
 
+# Render relationship boxplots from accumulated grouped values and return the image paths.
 def _render_relationship_boxplot_images(
     grouped_values: dict[tuple[object, ...], list[float]],
     output_images_dir: Path,
@@ -610,6 +620,7 @@ def _render_relationship_boxplot_images(
     return saved_paths
 
 
+# Stream costed scenarios into boxplot summaries and image files without loading all rows at once.
 def _write_relationship_boxplot_values_from_parquet(
     parquet_path: Path,
     output_csv_path: Path,
@@ -682,6 +693,8 @@ def _write_relationship_boxplot_values_from_parquet(
     summary_df.to_csv(output_csv_path, index=False)
     _render_relationship_boxplot_images(grouped_values, output_images_dir)
     return summary_df
+
+# Build numeric predictors and interactions for relationship-code modeling.
 def _relationship_model_feature_frame(source_df: pd.DataFrame) -> pd.DataFrame:
     """Build numeric predictors and interactions for relationship-code modeling."""
 
@@ -728,6 +741,7 @@ def _relationship_model_feature_frame(source_df: pd.DataFrame) -> pd.DataFrame:
     return features[RELATIONSHIP_MODEL_FEATURE_COLUMNS]
 
 
+# Collect a balanced per-class sample of model features and targets from a parquet file.
 def _collect_relationship_model_sample_from_parquet(
     parquet_path: Path,
     target_column: str,
@@ -779,6 +793,7 @@ def _collect_relationship_model_sample_from_parquet(
     return features.iloc[order].reset_index(drop=True), targets.iloc[order].reset_index(drop=True), dict(class_counts)
 
 
+# Fit a simple multinomial logistic-regression classifier using NumPy gradient descent.
 def _fit_multinomial_logistic_regression(
     features: pd.DataFrame,
     targets: pd.Series,
@@ -860,6 +875,7 @@ def _fit_multinomial_logistic_regression(
     }
 
 
+# Format a fitted relationship-code model, confusion matrix, and top coefficients as text.
 def _format_relationship_model_report(
     *,
     target_column: str,
@@ -910,6 +926,7 @@ def _format_relationship_model_report(
     return "\n".join(lines)
 
 
+# Format a model-report section explaining why fitting was skipped for a target.
 def _format_relationship_model_skip_report(
     *,
     target_column: str,
@@ -937,6 +954,7 @@ def _format_relationship_model_skip_report(
     return "\n".join(lines)
 
 
+# Write the relationship-code statistical model report for each configured target column.
 def write_relationship_code_model_report(
     parquet_path: Path,
     output_text_path: Path,

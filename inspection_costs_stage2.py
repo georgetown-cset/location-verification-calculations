@@ -16,6 +16,7 @@ from inspection_costs import (
 )
 
 
+# Aggregate component-level rows into one scenario-level row with totals and identifying combos.
 def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame) -> pd.DataFrame:
     if scenario_component_df.empty:
         return pd.DataFrame(
@@ -38,6 +39,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             ]
         )
 
+    # Keep only the fields needed for scenario-level totals before grouping to reduce memory pressure.
     summary_source = scenario_component_df.loc[
         :,
         [
@@ -134,6 +136,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
     return scenario_summary
 
 
+# Select one best physical-inspection scenario per mix and smuggling configuration.
 def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame:
     if final_df.empty:
         return final_df.copy()
@@ -167,6 +170,7 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
     return filtered_df
 
 
+# Classify how one numeric interval sits relative to another interval using stable relationship codes.
 def _classify_interval_relationship(
     summary_df: pd.DataFrame,
     *,
@@ -200,6 +204,7 @@ def _classify_interval_relationship(
     return result
 
 
+# Add cost, benefit-per-dollar, and relationship-code columns for a single PLV variant.
 def _add_plv_variant_cost_benefit_columns(
     result: pd.DataFrame,
     *,
@@ -237,6 +242,7 @@ def _add_plv_variant_cost_benefit_columns(
     )
 
 
+# Add physical-inspection and PLV cost-benefit columns to a scenario summary dataframe.
 def add_cost_benefit_columns(
     summary_df: pd.DataFrame,
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
@@ -250,6 +256,7 @@ def add_cost_benefit_columns(
     else:
         result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['cluster_size']]
 
+    # Physical-inspection costs include per-cluster fixed cost and per-tested-chip labor cost, repeated annually.
     result["Physical Inspection - Min Total Cost"] = (
         (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_fixed_cost_per_inspection[0]
         + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[0])*NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR

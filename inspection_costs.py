@@ -22,12 +22,12 @@ PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_
 PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV benefits.
 MIN_SHARE_DIVERTED = 0.1  # Minimum allowed share diverted (K / N) for each component of each scenario.
 
-MIX_STEP_SIZE = 0.1
+MIX_STEP_SIZE = 0.1  # Step size for iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
 N_VALS = [0, 1, 10, 100, 1000]  # Tests conducted on a cluster.
-PHYSICAL_INSPECTION_M_VALS = [0.05]  # Miss probability for a physical inspection test.
-PLV_M_VALS = [0.1]  # Miss probability for a PLV test.
+PHYSICAL_INSPECTION_M_VALS = [0.05]  # Failure probability for a physical inspection test.
+PLV_M_VALS = [0.1]  # Failure probability for a PLV test.
 ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
     # One relevant cluster is present in Epoch AI's Frontier Data Centers but missing from Epoch's GPU Clusters dataset.
     # Relevant cluster means a GPU cluster that is:
@@ -71,6 +71,7 @@ PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
 
 
+# Regenerate the GPU cluster bucket-count CSV and return the path used by later stages.
 def ensure_gpu_cluster_bucket_counts() -> Path:
     csv_path = GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH
     script_path = Path(__file__).with_name("gpu_cluster_bucket_counts.py")
@@ -78,6 +79,7 @@ def ensure_gpu_cluster_bucket_counts() -> Path:
     return csv_path
 
 
+# Load minimum cluster-count constraints by cluster-size bucket from the generated CSV.
 def load_min_clusters_by_size_from_csv(
     csv_path: str | Path = GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH,
 ) -> dict[int, int]:
@@ -98,6 +100,7 @@ def load_min_clusters_by_size_from_csv(
     return result
 
 
+# Build the cluster-size minimums used to keep generated mixes consistent with known GPU clusters.
 def get_min_clusters_by_size() -> dict[int, int]:
     ensure_gpu_cluster_bucket_counts()
     return load_min_clusters_by_size_from_csv()
@@ -179,6 +182,7 @@ LONG_SCENARIO_BENEFIT_SCENARIOS = {
 }
 
 
+# Convert an internal scenario metric column name into a label used in long-form outputs.
 def _scenario_variant_label(scenario_type: str, plv_type: str | None = None) -> str:
     if scenario_type.startswith("Physical"):
         return LONG_SCENARIO_BENEFIT_SCENARIOS[scenario_type]
@@ -208,6 +212,7 @@ BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS = {
 RELATIONSHIP_CODE_ORDER = list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys())
 
 
+# Return relationship-code descriptions customized for the selected PLV cost variant.
 def _plv_relationship_labels(plv_type: str) -> dict[str, str]:
     return {
         "a": f"Physical max benefit per dollar is less than {plv_type} min benefit per dollar",
@@ -219,6 +224,7 @@ def _plv_relationship_labels(plv_type: str) -> dict[str, str]:
     }
 
 
+# Define the PLV cost variants that should be costed and summarized throughout the pipeline.
 def _plv_variant_specs() -> list[dict[str, object]]:
     return [
         {
@@ -275,6 +281,7 @@ RELATIONSHIP_MODEL_FEATURE_COLUMNS = [
     "plv_cost_spread_per_chip",
 ]
 
+# Generate the summary CSV, boxplot-value CSV, boxplot images, and model report for one scenario parquet.
 def _write_relationship_outputs(
     *,
     parquet_path: Path,
@@ -315,6 +322,7 @@ def _write_relationship_outputs(
     return relationship_summary_df, relationship_boxplot_df, relationship_model_text
 
 
+# Generate the relationship-code rule CSV from scenario-level and component-level dataframes.
 def _write_relationship_code_rules(
     *,
     scenario_df: pd.DataFrame,
@@ -337,6 +345,7 @@ def _write_relationship_code_rules(
     return relationship_rules_df
 
 
+# Orchestrate the full inspection-cost workflow from detection lookup through final relationship outputs.
 def run_inspection_costs_workflow(
     *,
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
@@ -410,6 +419,8 @@ def run_inspection_costs_workflow(
     print("Starting inspection costs workflow")
     print("Clearing prior workflow artifacts from data and output directories")
     _reset_workflow_artifacts()
+
+    # Stage 1 starts with a lookup table for detection probability and expected identified diversion.
     print(f"Ensuring detection lookup table exists at {DETECTION_LOOKUP_TABLE_PARQUET_PATH}")
     detection_lookup_table = build_detection_lookup_table(
         cluster_sizes=cluster_sizes,
@@ -443,6 +454,7 @@ def run_inspection_costs_workflow(
     _overview_parquet_dataset(Path(SCENARIOS_PARQUET_PATH), "Scenario-component parquet dataset")
     _overview_parquet_file(scenarios_combined_path, "Combined scenario-component parquet")
 
+    # Stage 2 collapses component rows to one row per scenario, then adds cost and benefit metrics.
     print(f"Aggregating scenario-component rows to scenario level")
     scenario_df = _derive_scenario_summary_from_components(scenario_component_df)
     _overview_dataframe("Scenario-level rows", scenario_df)
@@ -472,6 +484,7 @@ def run_inspection_costs_workflow(
 
     _overview_parquet_file(scenarios_costed_perfect_information_path, "Perfect-information scenarios parquet")
 
+    # Stage 3 writes comparable relationship artifacts for all scenarios and the perfect-information subset.
     relationship_outputs = [
         {
             "label": "all",
