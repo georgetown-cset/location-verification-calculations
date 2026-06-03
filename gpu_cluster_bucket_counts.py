@@ -82,8 +82,8 @@ def filter_clusters(df: pd.DataFrame) -> pd.DataFrame:
     return filtered_df[country_mask & owner_mask & status_mask]
 
 
-def build_bucket_summary(quantities: pd.Series) -> pd.DataFrame:
-    """Count clusters in each chip-quantity bucket."""
+def build_bucket_summary(df: pd.DataFrame, quantities: pd.Series) -> pd.DataFrame:
+    """Count unique cluster names in each chip-quantity bucket."""
     buckets = [
         ("100 <= X < 1,000", 100, 1_000),
         ("1,000 <= X < 10,000", 1_000, 10_000),
@@ -93,6 +93,7 @@ def build_bucket_summary(quantities: pd.Series) -> pd.DataFrame:
 
     rows = []
     valid_quantities = quantities.dropna()
+    valid_names = df.loc[valid_quantities.index, "Name"].fillna("").astype(str)
 
     for bucket_label, lower_bound, upper_bound in buckets:
         if upper_bound is None:
@@ -100,12 +101,14 @@ def build_bucket_summary(quantities: pd.Series) -> pd.DataFrame:
         else:
             mask = (valid_quantities >= lower_bound) & (valid_quantities < upper_bound)
 
+        bucket_names = valid_names[mask]
+
         rows.append(
             {
                 "bucket": bucket_label,
                 "lower_bound": lower_bound,
                 "upper_bound": upper_bound if upper_bound is not None else "",
-                "cluster_count": int(mask.sum()),
+                "unique_name_count": int(bucket_names[bucket_names != ""].nunique()),
             }
         )
 
@@ -117,12 +120,12 @@ def main() -> None:
     df = pd.read_csv(source_csv_path)
     filtered_df = filter_clusters(df)
     quantities = extract_cluster_quantities(filtered_df)
-    summary_df = build_bucket_summary(quantities)
+    summary_df = build_bucket_summary(filtered_df, quantities)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(OUTPUT_CSV_PATH, index=False)
 
-    print("Chip quantity bucket counts after filtering")
+    print("Unique Name counts by chip quantity bucket after filtering")
     print(f"Total clusters after filters: {len(filtered_df)}")
     print(summary_df.to_string(index=False))
     print(f"\nWrote bucket summary to {OUTPUT_CSV_PATH}")
