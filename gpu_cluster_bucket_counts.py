@@ -64,14 +64,14 @@ def filter_clusters(df: pd.DataFrame) -> pd.DataFrame:
     """Apply the requested dataset filters before bucket counting."""
     filtered_df = df.copy()
 
-    country_series = filtered_df["Country"]
-    owner_series = filtered_df["Owner"]
+    country_series = filtered_df["Country"].fillna("")
+    owner_series = filtered_df["Owner"].fillna("")
     status_series = filtered_df["Status"].fillna("").astype(str)
 
-    country_mask = country_series.notna() & ~country_series.isin(
+    country_mask = ~country_series.astype(str).isin(
         {"United States of America", "China"}
     )
-    owner_mask = owner_series.notna() & ~owner_series.astype(str).apply(
+    owner_mask = ~owner_series.astype(str).apply(
         lambda owner: any(
             part.strip().lower() in EXCLUDED_OWNERS
             for part in owner.split(",")
