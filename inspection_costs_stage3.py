@@ -96,11 +96,6 @@ def _summarize_relationship_rule_bounds(
     relationship_labels = _plv_relationship_labels(plv_type)
     feature_specs = [
         {
-            "feature": COLUMN_NAMES['scenario_component_count'],
-            "group": "Scenario Summary",
-            "source_columns": [COLUMN_NAMES['scenario_component_count']],
-        },
-        {
             "feature": COLUMN_NAMES['total_clusters_in_mix'],
             "group": "Scenario Summary",
             "source_columns": [COLUMN_NAMES['total_clusters_in_mix']],
@@ -109,11 +104,6 @@ def _summarize_relationship_rule_bounds(
             "feature": COLUMN_NAMES['total_tests'],
             "group": "Scenario Summary",
             "source_columns": [COLUMN_NAMES['total_tests']],
-        },
-        {
-            "feature": COLUMN_NAMES['total_component_chips'],
-            "group": "Scenario Summary",
-            "source_columns": [COLUMN_NAMES['total_component_chips']],
         },
         {
             "feature": COLUMN_NAMES['bad_records'],
