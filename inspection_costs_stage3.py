@@ -94,30 +94,72 @@ def _summarize_relationship_rule_bounds(
     plv_type: str,
 ) -> pd.DataFrame:
     relationship_labels = _plv_relationship_labels(plv_type)
-    feature_groups = {
-        COLUMN_NAMES['scenario_component_count']: "Scenario Summary",
-        COLUMN_NAMES['total_clusters_in_mix']: "Scenario Summary",
-        COLUMN_NAMES['total_tests']: "Scenario Summary",
-        COLUMN_NAMES['total_component_chips']: "Scenario Summary",
-        COLUMN_NAMES['bad_records']: "Scenario Summary",
-        COLUMN_NAMES['number_of_clusters_with_smuggling']: "Scenario Summary",
-        COLUMN_NAMES['share_diverted']: "Scenario Summary",
-        COLUMN_NAMES['physical_inspection_chip_level_miss_prob']: "Scenario Summary",
-        COLUMN_NAMES['plv_chip_level_miss_prob']: "Scenario Summary",
-        "K Combo Min": "Combo Derived",
-        "K Combo Max": "Combo Derived",
-        "N Combo Min": "Combo Derived",
-        "N Combo Max": "Combo Derived",
-        "component_cluster_size_min": "Component Summary",
-        "component_cluster_size_max": "Component Summary",
-        "component_cluster_count_min": "Component Summary",
-        "component_cluster_count_max": "Component Summary",
-    }
-    feature_columns = [
-        feature_name
-        for feature_name in feature_groups
-        if feature_name in source_df.columns
-        and pd.to_numeric(source_df[feature_name], errors="coerce").dropna().nunique() > 1
+    feature_specs = [
+        {
+            "feature": COLUMN_NAMES['scenario_component_count'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['scenario_component_count']],
+        },
+        {
+            "feature": COLUMN_NAMES['total_clusters_in_mix'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['total_clusters_in_mix']],
+        },
+        {
+            "feature": COLUMN_NAMES['total_tests'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['total_tests']],
+        },
+        {
+            "feature": COLUMN_NAMES['total_component_chips'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['total_component_chips']],
+        },
+        {
+            "feature": COLUMN_NAMES['bad_records'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['bad_records']],
+        },
+        {
+            "feature": COLUMN_NAMES['number_of_clusters_with_smuggling'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['number_of_clusters_with_smuggling']],
+        },
+        {
+            "feature": COLUMN_NAMES['share_diverted'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['share_diverted']],
+        },
+        {
+            "feature": COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['physical_inspection_chip_level_miss_prob']],
+        },
+        {
+            "feature": COLUMN_NAMES['plv_chip_level_miss_prob'],
+            "group": "Scenario Summary",
+            "source_columns": [COLUMN_NAMES['plv_chip_level_miss_prob']],
+        },
+        {
+            "feature": "K Combo",
+            "group": "Combo Derived",
+            "source_columns": ["K Combo Min", "K Combo Max"],
+        },
+        {
+            "feature": "N Combo",
+            "group": "Combo Derived",
+            "source_columns": ["N Combo Min", "N Combo Max"],
+        },
+        {
+            "feature": "component_cluster_size",
+            "group": "Component Summary",
+            "source_columns": ["component_cluster_size_min", "component_cluster_size_max"],
+        },
+        {
+            "feature": "component_cluster_count",
+            "group": "Component Summary",
+            "source_columns": ["component_cluster_count_min", "component_cluster_count_max"],
+        },
     ]
     rows: list[dict[str, object]] = []
 
@@ -130,11 +172,19 @@ def _summarize_relationship_rule_bounds(
 
         scenario_count = int(len(code_df))
         feature_clauses: list[str] = []
-        clause_rows: list[dict[str, object]] = []
-        for feature_name in feature_columns:
-            if feature_name not in code_df.columns:
+        for feature_spec in feature_specs:
+            feature_name = feature_spec["feature"]
+            present_columns = [
+                column_name
+                for column_name in feature_spec["source_columns"]
+                if column_name in code_df.columns
+            ]
+            if not present_columns:
                 continue
-            values = pd.to_numeric(code_df[feature_name], errors="coerce").dropna()
+            values = pd.concat(
+                [pd.to_numeric(code_df[column_name], errors="coerce") for column_name in present_columns],
+                ignore_index=True,
+            ).dropna()
             if values.empty:
                 continue
 
@@ -147,14 +197,14 @@ def _summarize_relationship_rule_bounds(
             else:
                 clause_text = f"{lower_text} <= {feature_name} <= {upper_text}"
             feature_clauses.append(clause_text)
-            clause_rows.append(
+            rows.append(
                 {
                     COLUMN_NAMES['plv_type']: plv_type,
                     COLUMN_NAMES['relationship_code']: relationship_code,
                     COLUMN_NAMES['relationship_description']: relationship_labels[relationship_code],
                     COLUMN_NAMES['scenario_count']: scenario_count,
                     "Rule Component Index": len(feature_clauses),
-                    "Feature Group": feature_groups[feature_name],
+                    "Feature Group": feature_spec["group"],
                     "Feature": feature_name,
                     "Distinct Values": int(values.nunique(dropna=True)),
                     "Observed Min": float(observed_min),
@@ -163,10 +213,7 @@ def _summarize_relationship_rule_bounds(
                 }
             )
 
-        if clause_rows:
-            for clause_row in clause_rows:
-                rows.append(clause_row)
-        else:
+        if not feature_clauses:
             rows.append(
                 {
                     COLUMN_NAMES['plv_type']: plv_type,
