@@ -1,23 +1,35 @@
 import math
 
 
-def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
-    if x < 0 or x > K or x > n:
+def _hypergeom_pmf(x: int, cluster_size: int, diverted_chips: int, chips_inspected_per_cluster: int) -> float:
+    if x < 0 or x > diverted_chips or x > chips_inspected_per_cluster:
         return 0.0
-    if n - x > N - K:
+    if chips_inspected_per_cluster - x > cluster_size - diverted_chips:
         return 0.0
-    if N < 0 or K < 0 or n < 0 or K > N or n > N:
+    if (
+        cluster_size < 0
+        or diverted_chips < 0
+        or chips_inspected_per_cluster < 0
+        or diverted_chips > cluster_size
+        or chips_inspected_per_cluster > cluster_size
+    ):
         return 0.0
-    return math.comb(K, x) * math.comb(N - K, n - x) / math.comb(N, n)
+    return math.comb(diverted_chips, x) * math.comb(cluster_size - diverted_chips, chips_inspected_per_cluster - x) / math.comb(cluster_size, chips_inspected_per_cluster)
 
 
-def p_detect_cluster_diversion(N: int, n: int, K: int, m: float) -> dict[str, float]:
-    if K == 0 or n == 0:
+def p_detect_cluster_diversion(cluster_size: int, chips_inspected_per_cluster: int, diverted_chips: int, miss_prob: float) -> dict[str, float]:
+    if diverted_chips == 0 or chips_inspected_per_cluster == 0:
         return {"p_success": 0.0, "p_failure": 1.0}
 
-    x_values = range(max(0, n - (N - K)), min(K, n) + 1)
-    p_failure = sum(_hypergeom_pmf(x, N, K, n) * (m**x) for x in x_values)
+    x_values = range(
+        max(0, chips_inspected_per_cluster - (cluster_size - diverted_chips)),
+        min(diverted_chips, chips_inspected_per_cluster) + 1,
+    )
+    p_failure = sum(
+        _hypergeom_pmf(x, cluster_size, diverted_chips, chips_inspected_per_cluster) * (miss_prob**x)
+        for x in x_values
+    )
     return {"p_success": 1 - p_failure, "p_failure": p_failure}
 
 
-print(p_detect_cluster_diversion(N=1000, n=1000, K=100, m=0.99))
+print(p_detect_cluster_diversion(cluster_size=1000, chips_inspected_per_cluster=1000, diverted_chips=100, miss_prob=0.99))

@@ -39,7 +39,7 @@ def _relationship_model_feature_frame(source_df: pd.DataFrame) -> pd.DataFrame:
             "log_total_tests": np.log1p(total_tests),
             "log_bad_records": np.log1p(bad_records),
             "share_diverted": source_df[COLUMN_NAMES["share_diverted"]].astype("float64"),
-            "tests_per_cluster": total_tests / total_clusters.replace(0, np.nan),
+            "chips_inspected_per_cluster": total_tests / total_clusters.replace(0, np.nan),
             "bad_records_per_test": bad_records / total_tests.replace(0, np.nan),
             "physical_identified_share": physical_detected / bad_records.replace(0, np.nan),
             "plv_renting_identified_share": plv_renting_detected / bad_records.replace(0, np.nan),
