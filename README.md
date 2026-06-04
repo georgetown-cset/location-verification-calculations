@@ -86,19 +86,16 @@ It:
 - Writes boxplot summary values.
 - Renders boxplot JPEGs.
 - Produces relationship-code rule summaries.
-- Fits a simple multinomial logistic-regression report to describe which scenario features predict relationship codes.
 
 Key outputs:
 
 - `output/all/relationship_summary.csv`
 - `output/all/relationship_boxplot_values.csv`
 - `output/all/relationship_code_rules.csv`
-- `output/all/relationship_code_model.txt`
 - `output/all/images/`
 - `output/perfect_information/relationship_summary.csv`
 - `output/perfect_information/relationship_boxplot_values.csv`
 - `output/perfect_information/relationship_code_rules.csv`
-- `output/perfect_information/relationship_code_model.txt`
 - `output/perfect_information/images/`
 
 ## Directory and File Guide
@@ -111,7 +108,9 @@ Key outputs:
 ├── inspection_costs_stage1.py
 ├── inspection_costs_stage2.py
 ├── inspection_costs_stage3.py
-├── test_probability.py
+├── test/
+│   ├── test_inspection_costs_relationship_model.py
+│   └── test_probability.py
 ├── data/
 │   ├── gpu_clusters.csv
 │   ├── saved/
@@ -127,13 +126,11 @@ Key outputs:
     │   ├── relationship_summary.csv
     │   ├── relationship_boxplot_values.csv
     │   ├── relationship_code_rules.csv
-    │   ├── relationship_code_model.txt
     │   └── images/
     └── perfect_information/
         ├── relationship_summary.csv
         ├── relationship_boxplot_values.csv
         ├── relationship_code_rules.csv
-        ├── relationship_code_model.txt
         └── images/
 ```
 
@@ -142,9 +139,10 @@ Key outputs:
 - `inspection_costs.py`: Main workflow entry point and shared constants. It coordinates all stages and defines output paths.
 - `inspection_costs_stage1.py`: Detection lookup, cluster-mix generation, scenario-component generation, parquet writing, and artifact overview helpers.
 - `inspection_costs_stage2.py`: Scenario aggregation, perfect-information filtering, cost calculations, value-per-cost calculations, and relationship classification.
-- `inspection_costs_stage3.py`: Relationship summaries, rule summaries, boxplot data, rendered images, and statistical model reports.
+- `inspection_costs_stage3.py`: Relationship summaries, rule summaries, boxplot data, and rendered images.
+- `test/test_inspection_costs_relationship_model.py`: Standalone relationship-code statistical model report generator, kept out of the main pipeline.
 - `gpu_cluster_bucket_counts.py`: Downloads, filters, and buckets the GPU cluster dataset used to constrain generated mixes.
-- `test_probability.py`: Local probability-check script.
+- `test/test_probability.py`: Local probability-check script.
 
 ### Data Directories
 

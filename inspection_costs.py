@@ -60,12 +60,10 @@ RELATIONSHIP_SUMMARY_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_boxplot_values.csv"
 RELATIONSHIP_RULES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_rules.csv"
 RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{ALL_OUTPUT_DIR}/images"
-RELATIONSHIP_MODEL_TEXT_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_model.txt"
 PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_summary.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_boxplot_values.csv"
 PERFECT_INFORMATION_RELATIONSHIP_RULES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_rules.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUTPUT_DIR}/images"
-PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_model.txt"
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
@@ -238,65 +236,17 @@ def _plv_variant_specs() -> list[dict[str, object]]:
     ]
 
 
-RELATIONSHIP_MODEL_BASE_FEATURE_COLUMNS = [
-    COLUMN_NAMES["total_clusters_in_mix"],
-    COLUMN_NAMES["scenario_component_count"],
-    COLUMN_NAMES["total_tests"],
-    COLUMN_NAMES["total_component_chips"],
-    COLUMN_NAMES["bad_records"],
-    COLUMN_NAMES["share_diverted"],
-    COLUMN_NAMES["physical_inspection_total_diverted_chips_identified"],
-    "PLV Renting - Total Diverted Chips Identified",
-    "PLV Owning - Total Diverted Chips Identified",
-    "Physical Inspection - Min Total Cost",
-    "Physical Inspection - Max Total Cost",
-    "PLV Renting - Min Total Cost",
-    "PLV Renting - Max Total Cost",
-    "PLV Owning - Min Total Cost",
-    "PLV Owning - Max Total Cost",
-]
-
-RELATIONSHIP_MODEL_FEATURE_COLUMNS = [
-    "log_total_clusters_in_mix",
-    "scenario_component_count",
-    "log_total_tests",
-    "log_bad_records",
-    "share_diverted",
-    "tests_per_cluster",
-    "bad_records_per_test",
-    "physical_identified_share",
-    "plv_renting_identified_share",
-    "plv_owning_identified_share",
-    "log_physical_detected",
-    "log_plv_renting_detected",
-    "log_plv_owning_detected",
-    "plv_renting_minus_physical_detected_share",
-    "plv_owning_minus_physical_detected_share",
-    "physical_to_plv_renting_detected_ratio",
-    "physical_to_plv_owning_detected_ratio",
-    "physical_min_cost_per_test",
-    "physical_cost_range_per_test",
-    "plv_renting_cost_per_chip",
-    "plv_owning_cost_per_chip",
-    "plv_cost_spread_per_chip",
-]
-
-# Generate the summary CSV, boxplot-value CSV, boxplot images, and model report for one scenario parquet.
+# Generate the summary CSV, boxplot-value CSV, and boxplot images for one scenario parquet.
 def _write_relationship_outputs(
     *,
     parquet_path: Path,
     summary_path: Path,
     boxplot_values_path: Path,
     boxplot_images_path: Path,
-    model_text_path: Path,
     label: str,
-) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     from inspection_costs_stage1 import _overview_csv_file, _overview_dataframe
-    from inspection_costs_stage3 import (
-        _summarize_relationships_from_parquet,
-        _write_relationship_boxplot_values_from_parquet,
-        write_relationship_code_model_report,
-    )
+    from inspection_costs_stage3 import _summarize_relationships_from_parquet, _write_relationship_boxplot_values_from_parquet
 
     print(f"Generating {label} relationship summary at {summary_path}")
     relationship_summary_df = _summarize_relationships_from_parquet(parquet_path)
@@ -314,12 +264,7 @@ def _write_relationship_outputs(
     )
     _overview_dataframe(f"{label} relationship boxplot values", relationship_boxplot_df)
     _overview_csv_file(boxplot_values_path, f"{label} relationship boxplot values CSV")
-
-    relationship_model_text = write_relationship_code_model_report(
-        parquet_path,
-        model_text_path,
-    )
-    return relationship_summary_df, relationship_boxplot_df, relationship_model_text
+    return relationship_summary_df, relationship_boxplot_df
 
 
 # Generate the relationship-code rule CSV from scenario-level and component-level dataframes.
@@ -399,12 +344,10 @@ def run_inspection_costs_workflow(
     relationship_boxplot_values_path = Path(RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
     relationship_rules_path = Path(RELATIONSHIP_RULES_CSV_PATH)
     relationship_boxplot_images_path = Path(RELATIONSHIP_BOXPLOT_IMAGES_DIR)
-    relationship_model_text_path = Path(RELATIONSHIP_MODEL_TEXT_PATH)
     perfect_information_relationship_summary_path = Path(PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH)
     perfect_information_relationship_boxplot_values_path = Path(PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH)
     perfect_information_relationship_rules_path = Path(PERFECT_INFORMATION_RELATIONSHIP_RULES_CSV_PATH)
     perfect_information_relationship_boxplot_images_path = Path(PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR)
-    perfect_information_relationship_model_text_path = Path(PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH)
     detection_lookup_table = None
     scenario_component_df = None
     final_df = None
@@ -412,11 +355,9 @@ def run_inspection_costs_workflow(
     relationship_summary_df = None
     relationship_boxplot_df = None
     relationship_rules_df = None
-    relationship_model_text = None
     perfect_information_relationship_summary_df = None
     perfect_information_relationship_boxplot_df = None
     perfect_information_relationship_rules_df = None
-    perfect_information_relationship_model_text = None
     start_time = time.perf_counter()
 
     print("Starting inspection costs workflow")
@@ -495,7 +436,6 @@ def run_inspection_costs_workflow(
             "summary_path": relationship_summary_path,
             "boxplot_values_path": relationship_boxplot_values_path,
             "boxplot_images_path": relationship_boxplot_images_path,
-            "model_text_path": relationship_model_text_path,
         },
         {
             "label": "perfect-information",
@@ -503,10 +443,9 @@ def run_inspection_costs_workflow(
             "summary_path": perfect_information_relationship_summary_path,
             "boxplot_values_path": perfect_information_relationship_boxplot_values_path,
             "boxplot_images_path": perfect_information_relationship_boxplot_images_path,
-            "model_text_path": perfect_information_relationship_model_text_path,
         },
     ]
-    relationship_results: dict[str, tuple[pd.DataFrame, pd.DataFrame, str]] = {}
+    relationship_results: dict[str, tuple[pd.DataFrame, pd.DataFrame]] = {}
     for output_config in relationship_outputs:
         # Run the same relationship-output bundle for each scenario population.
         relationship_results[output_config["label"]] = _write_relationship_outputs(
@@ -514,16 +453,11 @@ def run_inspection_costs_workflow(
             summary_path=output_config["summary_path"],
             boxplot_values_path=output_config["boxplot_values_path"],
             boxplot_images_path=output_config["boxplot_images_path"],
-            model_text_path=output_config["model_text_path"],
             label=output_config["label"],
         )
 
-    relationship_summary_df, relationship_boxplot_df, relationship_model_text = relationship_results["all"]
-    (
-        perfect_information_relationship_summary_df,
-        perfect_information_relationship_boxplot_df,
-        perfect_information_relationship_model_text,
-    ) = relationship_results["perfect-information"]
+    relationship_summary_df, relationship_boxplot_df = relationship_results["all"]
+    perfect_information_relationship_summary_df, perfect_information_relationship_boxplot_df = relationship_results["perfect-information"]
 
     # Rule summaries need both scenario totals and the component rows that produced those totals.
     relationship_rules_df = _write_relationship_code_rules(
@@ -547,11 +481,9 @@ def run_inspection_costs_workflow(
         "relationship_summary_df": relationship_summary_df,
         "relationship_boxplot_df": relationship_boxplot_df,
         "relationship_rules_df": relationship_rules_df,
-        "relationship_model_text": relationship_model_text,
         "perfect_information_relationship_summary_df": perfect_information_relationship_summary_df,
         "perfect_information_relationship_boxplot_df": perfect_information_relationship_boxplot_df,
         "perfect_information_relationship_rules_df": perfect_information_relationship_rules_df,
-        "perfect_information_relationship_model_text": perfect_information_relationship_model_text,
     }
 
 
