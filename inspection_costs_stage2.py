@@ -222,10 +222,14 @@ def _add_plv_variant_cost_value_columns(
     max_value_per_cost_column = f"{plv_type} - Max Value Per Cost"
     detected_column = f"{plv_type} - Total Diverted Chips Identified"
 
-    # PLV cost is modeled against the full target chip population, independent of chips-inspected-per-cluster count.
+    # PLV cost is modeled against the full scenario chip population, independent of chips-inspected-per-cluster count.
     result[detected_column] = result[COLUMN_NAMES['plv_total_diverted_chips_identified']]
-    result[min_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[0]
-    result[max_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[1]
+    if COLUMN_NAMES['total_component_chips'] in result.columns:
+        total_chips = result[COLUMN_NAMES['total_component_chips']]
+    else:
+        total_chips = TARGET_CHIPS
+    result[min_cost_column] = total_chips * plv_cost_per_total_chip[0]
+    result[max_cost_column] = total_chips * plv_cost_per_total_chip[1]
     result[min_value_per_cost_column] = (
         result[detected_column] * PLV_DISCOUNT_RATE / result[max_cost_column]
     )

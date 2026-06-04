@@ -336,6 +336,7 @@ def run_inspection_costs_workflow(
     chips_inspected_per_cluster_vals = list(chips_inspected_per_cluster_vals)
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
+    detection_m_vals = sorted(set(physical_m_vals) | set(plv_m_vals))
     steps = list(steps) if steps is not None else None
 
     # Resolve all output locations once so the rest of the workflow can pass concrete Path objects.
@@ -372,7 +373,7 @@ def run_inspection_costs_workflow(
         cluster_sizes=cluster_sizes,
         K_vals=k_vals,
         chips_inspected_per_cluster_vals=chips_inspected_per_cluster_vals,
-        m_vals=ALL_M_VALS,
+        m_vals=detection_m_vals,
     )
     _overview_dataframe("Detection lookup table", detection_lookup_table)
 

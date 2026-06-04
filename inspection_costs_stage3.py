@@ -646,6 +646,7 @@ def _write_relationship_boxplot_values_from_parquet(
     ]
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     grouped_values: dict[tuple[object, ...], list[float]] = {}
+    smuggled_chip_totals: dict[tuple[object, ...], float] = {}
 
     # The group key matches the eventual summary CSV dimensions and plot series.
     group_columns = [
@@ -664,10 +665,18 @@ def _write_relationship_boxplot_values_from_parquet(
             continue
         grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
 
-        # Accumulate raw values by group so quantiles can be computed after all batches are read.
+        # Accumulate raw value-per-cost values by group so quantiles can be computed after all batches are read.
+        # Smuggled-chip rows are already batch-level sums, so they must be summed across batches instead.
         for group_key, values in grouped:
-            grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
+            group_key = tuple(group_key)
+            if group_key[0] == SMUGGLED_CHIPS_METRIC_FAMILY:
+                smuggled_chip_totals[group_key] = smuggled_chip_totals.get(group_key, 0.0) + float(values.sum())
+            else:
+                grouped_values.setdefault(group_key, []).extend(values.tolist())
         print(f"Accumulated {len(boxplot_df)} boxplot rows from current batch")
+
+    for group_key, value in smuggled_chip_totals.items():
+        grouped_values[group_key] = [value]
 
     if not grouped_values:
         empty_summary = _summarize_relationship_boxplot_dataframe(

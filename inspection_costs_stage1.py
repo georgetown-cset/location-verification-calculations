@@ -2,49 +2,27 @@ from __future__ import annotations
 
 import itertools
 import math
-import time
-from collections import Counter
 from fractions import Fraction
 from pathlib import Path
 import shutil
 from typing import Iterable, Optional
 
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
-
 from inspection_costs import (
     ALL_M_VALS,
-    CLUSTER_SIZES,
     COLUMN_NAMES,
     DATA_SAVED_DIR,
     DETECTION_LOOKUP_TABLE_PARQUET_PATH,
-    ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
-    K_VALS,
     MIN_DIVERTED_CHIPS,
     MIX_STEPS,
-    NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR,
-    OUTPUT_DIR,
     PARQUET_COMPRESSION,
-    PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
     PHYSICAL_INSPECTION_M_VALS,
-    PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
-    PLV_DISCOUNT_RATE,
     PLV_M_VALS,
-    PLV_OWNING_COST_PER_TOTAL_CHIP,
-    PLV_RENTING_COST_PER_TOTAL_CHIP,
     ALL_OUTPUT_DIR,
     PERFECT_INFORMATION_OUTPUT_DIR,
-    RELATIONSHIP_BOXPLOT_IMAGES_DIR,
-    RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH,
-    RELATIONSHIP_SUMMARY_CSV_PATH,
     SCENARIO_COLUMNS,
-    SCENARIOS_COMBINED_PARQUET_PATH,
-    SCENARIOS_COSTED_PARQUET_PATH,
     SCENARIOS_PARQUET_PATH,
     SHARE_OF_CLUSTERS_WITH_SMUGGLING,
     TARGET_CHIPS,
@@ -558,7 +536,6 @@ def _build_mix_records(
             for chips_inspected_per_cluster_combo_count, chips_inspected_per_cluster_combo in enumerate(itertools.product(*chips_inspected_per_cluster_options_per_component), start=1):
                 for physical_m_val in physical_m_vals:
                     for plv_m_val in plv_m_vals:
-                        scenario_counter += 1
                         scenario_id = (
                             f"{mix_id}_K{'-'.join(map(str, k_combo))}_i{'-'.join(map(str, chips_inspected_per_cluster_combo))}"
                             f"_pm{physical_m_val}_plvm{plv_m_val}"
@@ -570,10 +547,18 @@ def _build_mix_records(
                             detection_info_by_m = detection_grouped.get((cluster_size_comp, k_val), {}).get(int(chips_inspected_per_cluster), {})
                             physical_info = detection_info_by_m.get(float(physical_m_val))
                             if physical_info is None:
-                                continue
+                                raise ValueError(
+                                    "Missing physical-inspection detection lookup row for "
+                                    f"cluster_size={cluster_size_comp}, k={k_val}, "
+                                    f"chips_inspected_per_cluster={chips_inspected_per_cluster}, m={physical_m_val}"
+                                )
                             plv_info = detection_info_by_m.get(float(plv_m_val))
                             if plv_info is None:
-                                continue
+                                raise ValueError(
+                                    "Missing PLV detection lookup row for "
+                                    f"cluster_size={cluster_size_comp}, k={k_val}, "
+                                    f"chips_inspected_per_cluster={chips_inspected_per_cluster}, m={plv_m_val}"
+                                )
                             physical_p_detect, physical_identified_per_cluster, _, _ = physical_info
                             _, _, plv_p_detect, plv_identified_per_cluster = plv_info
                             flat_rows.append(
@@ -604,6 +589,7 @@ def _build_mix_records(
                                 )
                             )
 
+                        scenario_counter += 1
                         scenario_component_records.extend(flat_rows)
 
                 if chips_inspected_per_cluster_combo_count % 1000 == 0:
