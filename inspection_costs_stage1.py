@@ -25,7 +25,7 @@ from inspection_costs import (
     DETECTION_LOOKUP_TABLE_PARQUET_PATH,
     ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     K_VALS,
-    MIN_SHARE_DIVERTED,
+    MIN_DIVERTED_CHIPS,
     MIX_STEPS,
     NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR,
     OUTPUT_DIR,
@@ -522,7 +522,11 @@ def _build_mix_records(
         for component in mix_components
     ]
     k_options_per_component = [
-        [k_val for k_val in component[4] if (k_val / component[0]) >= MIN_SHARE_DIVERTED]
+        [
+            k_val
+            for k_val in component[4]
+            if k_val >= MIN_DIVERTED_CHIPS or k_val == component[0]
+        ]
         for component in component_data
     ]
     scenario_counter = 0

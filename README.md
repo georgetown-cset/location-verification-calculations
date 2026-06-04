@@ -163,6 +163,7 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `TARGET_CHIPS`: Total chip population modeled in each scenario.
 - `CLUSTER_SIZES`: Candidate cluster-size buckets.
 - `K_VALS`: Candidate diverted-chip counts per cluster.
+- `MIN_DIVERTED_CHIPS`: Minimum diverted-chip count allowed for each component of each scenario (`100`), except that full diversion (`K = N`) is always allowed.
 - `CHIPS_INSPECTED_PER_CLUSTER_VALS`: Candidate physical-inspection chip counts inspected per cluster.
 - `PHYSICAL_INSPECTION_M_VALS`: Physical-inspection chip-level miss probabilities.
 - `PLV_M_VALS`: PLV chip-level miss probabilities.
