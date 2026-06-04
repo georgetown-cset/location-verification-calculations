@@ -1,15 +1,15 @@
 PLV Type,Relationship Code,Value Per Cost Relationship Description,Value Per Cost Scenario Count
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,1633
-PLV Renting,b,Physical max value per cost is within PLV Renting range and Physical min value per cost is below PLV Renting min value per cost,127
-PLV Renting,c,Physical min and max value per cost are both within PLV Renting range,288
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,1224
+PLV Renting,b,Physical max value per cost is within PLV Renting range and Physical min value per cost is below PLV Renting min value per cost,192
+PLV Renting,c,Physical min and max value per cost are both within PLV Renting range,432
 PLV Renting,d,Physical min value per cost is within PLV Renting range and Physical max value per cost is above PLV Renting max value per cost,0
 PLV Renting,e,Physical min value per cost is greater than PLV Renting max value per cost,0
 PLV Renting,f,Physical value per cost range spans both sides of PLV Renting range,0
-PLV Renting,Total,All scenarios,2048
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,1760
-PLV Owning,b,Physical max value per cost is within PLV Owning range and Physical min value per cost is below PLV Owning min value per cost,182
-PLV Owning,c,Physical min and max value per cost are both within PLV Owning range,106
+PLV Renting,Total,All scenarios,1848
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,1416
+PLV Owning,b,Physical max value per cost is within PLV Owning range and Physical min value per cost is below PLV Owning min value per cost,279
+PLV Owning,c,Physical min and max value per cost are both within PLV Owning range,153
 PLV Owning,d,Physical min value per cost is within PLV Owning range and Physical max value per cost is above PLV Owning max value per cost,0
 PLV Owning,e,Physical min value per cost is greater than PLV Owning max value per cost,0
 PLV Owning,f,Physical value per cost range spans both sides of PLV Owning range,0
-PLV Owning,Total,All scenarios,2048
+PLV Owning,Total,All scenarios,1848
