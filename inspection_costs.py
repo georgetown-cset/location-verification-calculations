@@ -25,7 +25,7 @@ MIN_SHARE_DIVERTED = 0.1  # Minimum allowed share diverted (K / N) for each comp
 MIX_STEP_SIZE = 0.1  # Step size for iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
-N_VALS = [0, 1, 10, 100, 1000]  # Tests conducted on a cluster.
+CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1000]  # Chips inspected per cluster.
 PHYSICAL_INSPECTION_M_VALS = [0.05]  # Failure probability for a physical inspection test.
 PLV_M_VALS = [0.1]  # Failure probability for a PLV test.
 ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
@@ -59,10 +59,12 @@ SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios
 RELATIONSHIP_SUMMARY_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_boxplot_values.csv"
 RELATIONSHIP_RULES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_rules.csv"
+RELATIONSHIP_MODEL_TEXT_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_model.txt"
 RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{ALL_OUTPUT_DIR}/images"
 PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_summary.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_boxplot_values.csv"
 PERFECT_INFORMATION_RELATIONSHIP_RULES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_rules.csv"
+PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_model.txt"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUTPUT_DIR}/images"
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
@@ -112,13 +114,13 @@ COLUMN_NAMES = {
     "total_component_chips": "Total Component Chips",
     "scenario_component_count": "Scenario Component Count",
     "k_combo": "K Combo",
-    "n_combo": "N Combo",
+    "chips_inspected_per_cluster_combo": "Chips Inspected Per Cluster Combo",
     "cluster_size": "Cluster Size (N)",
     "bad_records": "Bad Records (K)",
     "total_bad_records": "Total Bad Records",
     "number_of_clusters": "Number of Clusters",
     "number_of_clusters_with_smuggling": "Number of Clusters with Smuggling",
-    "tests": "Tests (n)",
+    "chips_inspected_per_cluster": "Chips Inspected per Cluster",
     "share_diverted": "Share Diverted",
     "chip_level_miss_prob": "Chip-level Miss Prob (m)",
     "physical_inspection_chip_level_miss_prob": "Physical Inspection - Chip-level Miss Prob (m)",
@@ -150,13 +152,13 @@ SCENARIO_COLUMNS = [
     COLUMN_NAMES["total_component_chips"],
     COLUMN_NAMES["scenario_component_count"],
     COLUMN_NAMES["k_combo"],
-    COLUMN_NAMES["n_combo"],
+    COLUMN_NAMES["chips_inspected_per_cluster_combo"],
     COLUMN_NAMES["cluster_size"],
     COLUMN_NAMES["bad_records"],
     COLUMN_NAMES["total_bad_records"],
     COLUMN_NAMES["number_of_clusters"],
     COLUMN_NAMES["number_of_clusters_with_smuggling"],
-    COLUMN_NAMES["tests"],
+    COLUMN_NAMES["chips_inspected_per_cluster"],
     COLUMN_NAMES["physical_inspection_chip_level_miss_prob"],
     COLUMN_NAMES["physical_inspection_p_detect"],
     COLUMN_NAMES["physical_inspection_diverted_chips_identified"],
@@ -295,7 +297,7 @@ def run_inspection_costs_workflow(
     *,
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
     k_vals: Iterable[int] = K_VALS,
-    n_vals: Iterable[int] = N_VALS,
+    chips_inspected_per_cluster_vals: Iterable[int] = CHIPS_INSPECTED_PER_CLUSTER_VALS,
     extra_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
     plv_m_vals: Iterable[float] = PLV_M_VALS,
@@ -331,7 +333,7 @@ def run_inspection_costs_workflow(
 
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
-    n_vals = list(n_vals)
+    chips_inspected_per_cluster_vals = list(chips_inspected_per_cluster_vals)
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
     steps = list(steps) if steps is not None else None
@@ -369,7 +371,7 @@ def run_inspection_costs_workflow(
     detection_lookup_table = build_detection_lookup_table(
         cluster_sizes=cluster_sizes,
         K_vals=k_vals,
-        n_vals=n_vals,
+        chips_inspected_per_cluster_vals=chips_inspected_per_cluster_vals,
         m_vals=ALL_M_VALS,
     )
     _overview_dataframe("Detection lookup table", detection_lookup_table)

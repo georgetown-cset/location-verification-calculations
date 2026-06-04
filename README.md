@@ -9,7 +9,7 @@ The model generates possible GPU cluster mixes, diversion scenarios, testing str
 
 ## Model Overview
 
-The workflow starts with assumptions about a target chip population, possible cluster sizes, diverted-chip counts, test counts, and chip-level miss probabilities. It uses a hypergeometric detection model to estimate the probability that testing detects at least one diverted chip in a cluster.
+The workflow starts with assumptions about a target chip population, possible cluster sizes, diverted-chip counts, chips inspected per cluster, and chip-level miss probabilities. It uses a hypergeometric detection model to estimate the probability that inspection detects at least one diverted chip in a cluster.
 
 For each valid scenario, the pipeline computes:
 
@@ -46,7 +46,7 @@ The output is:
 
 It:
 
-- Computes hypergeometric detection probabilities for each cluster size, diverted-chip count, test count, and miss probability.
+- Computes hypergeometric detection probabilities for each cluster size, diverted-chip count, chips inspected per cluster, and miss probability.
 - Generates valid cluster mixes that sum to the target chip population.
 - Applies minimum cluster-count constraints from the GPU cluster bucket summary.
 - Expands each mix into scenario-component rows across smuggling and testing combinations.
@@ -163,7 +163,7 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `TARGET_CHIPS`: Total chip population modeled in each scenario.
 - `CLUSTER_SIZES`: Candidate cluster-size buckets.
 - `K_VALS`: Candidate diverted-chip counts per cluster.
-- `N_VALS`: Candidate physical-inspection test counts per cluster.
+- `CHIPS_INSPECTED_PER_CLUSTER_VALS`: Candidate physical-inspection chip counts inspected per cluster.
 - `PHYSICAL_INSPECTION_M_VALS`: Physical-inspection chip-level miss probabilities.
 - `PLV_M_VALS`: PLV chip-level miss probabilities.
 - `PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP`: Physical-inspection variable cost range.

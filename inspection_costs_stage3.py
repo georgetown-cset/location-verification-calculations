@@ -57,7 +57,7 @@ def _build_relationship_rule_frame(
             COLUMN_NAMES['cluster_size'],
             COLUMN_NAMES['number_of_clusters'],
             COLUMN_NAMES['bad_records'],
-            COLUMN_NAMES['tests'],
+            COLUMN_NAMES['chips_inspected_per_cluster'],
         ],
     ].groupby(COLUMN_NAMES['scenario_id'], sort=False, observed=True).agg(
         component_cluster_size_min=(COLUMN_NAMES['cluster_size'], "min"),
@@ -66,21 +66,21 @@ def _build_relationship_rule_frame(
         component_cluster_count_max=(COLUMN_NAMES['number_of_clusters'], "max"),
         component_k_min=(COLUMN_NAMES['bad_records'], "min"),
         component_k_max=(COLUMN_NAMES['bad_records'], "max"),
-        component_n_min=(COLUMN_NAMES['tests'], "min"),
-        component_n_max=(COLUMN_NAMES['tests'], "max"),
+        component_chips_inspected_per_cluster_min=(COLUMN_NAMES['chips_inspected_per_cluster'], "min"),
+        component_chips_inspected_per_cluster_max=(COLUMN_NAMES['chips_inspected_per_cluster'], "max"),
     ).reset_index()
     source_df = source_df.merge(component_summary, on=COLUMN_NAMES['scenario_id'], how='left')
 
     source_df["K Combo Min"] = source_df["component_k_min"]
     source_df["K Combo Max"] = source_df["component_k_max"]
-    source_df["N Combo Min"] = source_df["component_n_min"]
-    source_df["N Combo Max"] = source_df["component_n_max"]
+    source_df["Chips Inspected Per Cluster Combo Min"] = source_df["component_chips_inspected_per_cluster_min"]
+    source_df["Chips Inspected Per Cluster Combo Max"] = source_df["component_chips_inspected_per_cluster_max"]
     source_df = source_df.drop(
         columns=[
             "component_k_min",
             "component_k_max",
-            "component_n_min",
-            "component_n_max",
+            "component_chips_inspected_per_cluster_min",
+            "component_chips_inspected_per_cluster_max",
         ]
     )
 
@@ -139,9 +139,9 @@ def _summarize_relationship_rule_bounds(
             "source_columns": ["K Combo Min", "K Combo Max"],
         },
         {
-            "feature": "N Combo",
+            "feature": "Chips Inspected Per Cluster Combo",
             "group": "Combo Derived",
-            "source_columns": ["N Combo Min", "N Combo Max"],
+            "source_columns": ["Chips Inspected Per Cluster Combo Min", "Chips Inspected Per Cluster Combo Max"],
         },
         {
             "feature": "component_cluster_size",

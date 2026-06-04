@@ -27,7 +27,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
                 COLUMN_NAMES['total_clusters_in_mix'],
                 COLUMN_NAMES['scenario_component_count'],
                 COLUMN_NAMES['k_combo'],
-                COLUMN_NAMES['n_combo'],
+                COLUMN_NAMES['chips_inspected_per_cluster_combo'],
                 COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
                 COLUMN_NAMES['plv_chip_level_miss_prob'],
                 COLUMN_NAMES['total_tests'],
@@ -47,7 +47,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['mix_id'],
             COLUMN_NAMES['mix_description'],
             COLUMN_NAMES['k_combo'],
-            COLUMN_NAMES['n_combo'],
+            COLUMN_NAMES['chips_inspected_per_cluster_combo'],
             COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             COLUMN_NAMES['plv_chip_level_miss_prob'],
             COLUMN_NAMES['total_tests'],
@@ -74,7 +74,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         Total_Clusters_in_Mix=(COLUMN_NAMES['number_of_clusters'], "sum"),
         Scenario_Component_Count=(COLUMN_NAMES['number_of_clusters'], "size"),
         K_Combo=(COLUMN_NAMES['k_combo'], "first"),
-        N_Combo=(COLUMN_NAMES['n_combo'], "first"),
+        Chips_Inspected_Per_Cluster_Combo=(COLUMN_NAMES['chips_inspected_per_cluster_combo'], "first"),
         Physical_Inspection_Chip_Level_Miss_Prob=(
             COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             "first",
@@ -100,7 +100,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "Total_Clusters_in_Mix": COLUMN_NAMES['total_clusters_in_mix'],
             "Scenario_Component_Count": COLUMN_NAMES['scenario_component_count'],
             "K_Combo": COLUMN_NAMES['k_combo'],
-            "N_Combo": COLUMN_NAMES['n_combo'],
+            "Chips_Inspected_Per_Cluster_Combo": COLUMN_NAMES['chips_inspected_per_cluster_combo'],
             "Physical_Inspection_Chip_Level_Miss_Prob": COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             "PLV_Chip_Level_Miss_Prob": COLUMN_NAMES['plv_chip_level_miss_prob'],
             "Total_Tests": COLUMN_NAMES['total_tests'],
@@ -121,7 +121,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['total_clusters_in_mix'],
             COLUMN_NAMES['scenario_component_count'],
             COLUMN_NAMES['k_combo'],
-            COLUMN_NAMES['n_combo'],
+            COLUMN_NAMES['chips_inspected_per_cluster_combo'],
             COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             COLUMN_NAMES['plv_chip_level_miss_prob'],
             COLUMN_NAMES['total_tests'],
@@ -222,7 +222,7 @@ def _add_plv_variant_cost_value_columns(
     max_value_per_cost_column = f"{plv_type} - Max Value Per Cost"
     detected_column = f"{plv_type} - Total Diverted Chips Identified"
 
-    # PLV cost is modeled against the full target chip population, independent of test count.
+    # PLV cost is modeled against the full target chip population, independent of chips-inspected-per-cluster count.
     result[detected_column] = result[COLUMN_NAMES['plv_total_diverted_chips_identified']]
     result[min_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[0]
     result[max_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[1]

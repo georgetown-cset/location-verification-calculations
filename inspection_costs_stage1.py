@@ -27,7 +27,6 @@ from inspection_costs import (
     K_VALS,
     MIN_SHARE_DIVERTED,
     MIX_STEPS,
-    N_VALS,
     NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR,
     OUTPUT_DIR,
     PARQUET_COMPRESSION,
@@ -53,41 +52,58 @@ from inspection_costs import (
 )
 
 
-# Compute the hypergeometric probability of drawing exactly x diverted chips in n tests.
-def _hypergeom_pmf(x: int, N: int, K: int, n: int) -> float:
-    if x < 0 or x > K or x > n:
+# Compute the hypergeometric probability of drawing exactly x diverted chips in a sample of inspected chips.
+def _hypergeom_pmf(x: int, cluster_size: int, diverted_chips: int, chips_inspected_per_cluster: int) -> float:
+    if x < 0 or x > diverted_chips or x > chips_inspected_per_cluster:
         return 0.0
-    if n - x > N - K:
+    if chips_inspected_per_cluster - x > cluster_size - diverted_chips:
         return 0.0
-    if N < 0 or K < 0 or n < 0 or K > N or n > N:
+    if (
+        cluster_size < 0
+        or diverted_chips < 0
+        or chips_inspected_per_cluster < 0
+        or diverted_chips > cluster_size
+        or chips_inspected_per_cluster > cluster_size
+    ):
         return 0.0
-    return math.comb(K, x) * math.comb(N - K, n - x) / math.comb(N, n)
+    return math.comb(diverted_chips, x) * math.comb(cluster_size - diverted_chips, chips_inspected_per_cluster - x) / math.comb(cluster_size, chips_inspected_per_cluster)
 
 
-# Calculate the chance that testing detects at least one diverted chip in a cluster.
-def p_detect_cluster_diversion(N: int, n: int, K: int, m: float) -> dict[str, float]:
-    if K == 0 or n == 0:
+# Calculate the chance that inspection detects at least one diverted chip in a cluster.
+def p_detect_cluster_diversion(cluster_size: int, chips_inspected_per_cluster: int, diverted_chips: int, miss_prob: float) -> dict[str, float]:
+    if diverted_chips == 0 or chips_inspected_per_cluster == 0:
         return {"p_success": 0.0, "p_failure": 1.0}
 
-    x_values = range(max(0, n - (N - K)), min(K, n) + 1)
-    p_failure = sum(_hypergeom_pmf(x, N, K, n) * (m**x) for x in x_values)
+    x_values = range(
+        max(0, chips_inspected_per_cluster - (cluster_size - diverted_chips)),
+        min(diverted_chips, chips_inspected_per_cluster) + 1,
+    )
+    p_failure = sum(
+        _hypergeom_pmf(x, cluster_size, diverted_chips, chips_inspected_per_cluster) * (miss_prob**x)
+        for x in x_values
+    )
     return {"p_success": 1 - p_failure, "p_failure": p_failure}
 
 
 # Convert a detection probability into expected diverted chips identified for a cluster.
-def expected_value_detected_diversion(N: int, n: int, K: int, m: float) -> dict[str, float]:
-    p_detect = p_detect_cluster_diversion(N=N, n=n, K=K, m=m)["p_success"]
+def expected_value_detected_diversion(cluster_size: int, chips_inspected_per_cluster: int, diverted_chips: int, miss_prob: float) -> dict[str, float]:
+    p_detect = p_detect_cluster_diversion(
+        cluster_size=cluster_size,
+        chips_inspected_per_cluster=chips_inspected_per_cluster,
+        diverted_chips=diverted_chips,
+        miss_prob=miss_prob,
+    )["p_success"]
     return {
-        "diverted_chips_identified": p_detect * K,
+        "diverted_chips_identified": p_detect * diverted_chips,
         "p_detect": p_detect,
     }
 
 
-# Build and optionally persist the lookup table of detection outcomes for each N, K, n, and m combination.
+# Build and optionally persist the lookup table of detection outcomes for each cluster size, diverted-chip count, inspected-chip count, and miss-probability combination.
 def build_detection_lookup_table(
     cluster_sizes: Iterable[int],
     K_vals: Iterable[int],
-    n_vals: Iterable[int],
+    chips_inspected_per_cluster_vals: Iterable[int],
     m_vals: Iterable[float] = ALL_M_VALS,
     parquet_path: Optional[str | Path] = DETECTION_LOOKUP_TABLE_PARQUET_PATH,
 ) -> pd.DataFrame:
@@ -95,22 +111,22 @@ def build_detection_lookup_table(
         parquet_path = Path(parquet_path)
 
     rows = []
-    for N in cluster_sizes:
-        for n in n_vals:
-            if n > N:
+    for cluster_size in cluster_sizes:
+        for chips_inspected_per_cluster in chips_inspected_per_cluster_vals:
+            if chips_inspected_per_cluster > cluster_size:
                 continue
-            for K in K_vals:
-                if K > N:
+            for diverted_chips in K_vals:
+                if diverted_chips > cluster_size:
                     continue
                 for m in m_vals:
-                    physical_result = expected_value_detected_diversion(N, n, K, m)
-                    plv_result = expected_value_detected_diversion(N, N, K, m)
+                    physical_result = expected_value_detected_diversion(cluster_size, chips_inspected_per_cluster, diverted_chips, m)
+                    plv_result = expected_value_detected_diversion(cluster_size, cluster_size, diverted_chips, m)
                     rows.append(
                         {
-                            COLUMN_NAMES['cluster_size']: int(N),
-                            COLUMN_NAMES['tests']: int(n),
-                            COLUMN_NAMES['bad_records']: int(K),
-                            COLUMN_NAMES['share_diverted']: K / N,
+                            COLUMN_NAMES['cluster_size']: int(cluster_size),
+                            COLUMN_NAMES['chips_inspected_per_cluster']: int(chips_inspected_per_cluster),
+                            COLUMN_NAMES['bad_records']: int(diverted_chips),
+                            COLUMN_NAMES['share_diverted']: diverted_chips / cluster_size,
                             COLUMN_NAMES['chip_level_miss_prob']: float(m),
                             COLUMN_NAMES['physical_inspection_p_detect']: physical_result["p_detect"],
                             COLUMN_NAMES['physical_inspection_diverted_chips_identified']: physical_result["diverted_chips_identified"],
@@ -156,7 +172,7 @@ def build_mix_data(
     valid_mixes: list[list[dict[str, int]]] = []
     seen_mix_ids: set[str] = set()
     for _mix_index, proportions in _iter_valid_mix_proportions(steps, len(cluster_sizes)):
-        active_components = [(n, p) for n, p in zip(cluster_sizes, proportions) if p > 0]
+        active_components = [(cluster_size, proportion) for cluster_size, proportion in zip(cluster_sizes, proportions) if proportion > 0]
         current_mix: list[dict[str, int]] = []
 
         # Convert each active proportion into an integer cluster count for that cluster size.
@@ -319,7 +335,7 @@ def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[
     columns = [
         COLUMN_NAMES['cluster_size'],
         COLUMN_NAMES['bad_records'],
-        COLUMN_NAMES['tests'],
+        COLUMN_NAMES['chips_inspected_per_cluster'],
         COLUMN_NAMES['chip_level_miss_prob'],
         COLUMN_NAMES['physical_inspection_p_detect'],
         COLUMN_NAMES['physical_inspection_diverted_chips_identified'],
@@ -327,8 +343,8 @@ def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[
         COLUMN_NAMES['plv_diverted_chips_identified'],
     ]
     for row in detection_lookup_table.loc[:, columns].itertuples(index=False, name=None):
-        N, K, n, m, physical_p_detect, physical_identified, plv_p_detect, plv_identified = row
-        grouped.setdefault((int(N), int(K)), {}).setdefault(int(n), {})[float(m)] = (
+        cluster_size, diverted_chips, chips_inspected_per_cluster, m, physical_p_detect, physical_identified, plv_p_detect, plv_identified = row
+        grouped.setdefault((int(cluster_size), int(diverted_chips)), {}).setdefault(int(chips_inspected_per_cluster), {})[float(m)] = (
             float(physical_p_detect),
             float(physical_identified),
             float(plv_p_detect),
@@ -337,7 +353,7 @@ def _group_detection_lookup(detection_lookup_table: pd.DataFrame) -> dict[tuple[
     return grouped
 
 
-# Generate scenario-component rows for every valid mix, diversion amount, test count, and miss-probability pair.
+# Generate scenario-component rows for every valid mix, diversion amount, inspected-chip count, and miss-probability pair.
 def build_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
@@ -514,28 +530,28 @@ def _build_mix_records(
 
     # A scenario chooses one diverted-chip count for each component in the mix.
     for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
-        n_options_per_component: list[tuple[int, ...]] = []
-        for (N_comp, _num_clusters_comp, _num_clusters_with_smuggling, _weight_pct, _), k_val in zip(component_data, k_combo):
-            # Test-count options come from the detection table and are keyed by the selected N and K.
-            n_options = detection_grouped.get((N_comp, int(k_val)), {})
-            if not n_options:
+        chips_inspected_per_cluster_options_per_component: list[tuple[int, ...]] = []
+        for (cluster_size_comp, _num_clusters_comp, _num_clusters_with_smuggling, _weight_pct, _), k_val in zip(component_data, k_combo):
+            # Inspected-chip options come from the detection table and are keyed by the selected cluster size and K.
+            chips_inspected_per_cluster_options = detection_grouped.get((cluster_size_comp, int(k_val)), {})
+            if not chips_inspected_per_cluster_options:
                 break
-            n_options_per_component.append(tuple(sorted(n_options)))
+            chips_inspected_per_cluster_options_per_component.append(tuple(sorted(chips_inspected_per_cluster_options)))
         else:
-            # Once every component has valid K and n options, cross product them into concrete scenarios.
-            for n_combo_count, n_combo in enumerate(itertools.product(*n_options_per_component), start=1):
+            # Once every component has valid K and inspected-chip options, cross product them into concrete scenarios.
+            for chips_inspected_per_cluster_combo_count, chips_inspected_per_cluster_combo in enumerate(itertools.product(*chips_inspected_per_cluster_options_per_component), start=1):
                 for physical_m_val in physical_m_vals:
                     for plv_m_val in plv_m_vals:
                         scenario_counter += 1
                         scenario_id = (
-                            f"{mix_id}_K{'-'.join(map(str, k_combo))}_n{'-'.join(map(str, n_combo))}"
+                            f"{mix_id}_K{'-'.join(map(str, k_combo))}_i{'-'.join(map(str, chips_inspected_per_cluster_combo))}"
                             f"_pm{physical_m_val}_plvm{plv_m_val}"
                         )
                         flat_rows: list[tuple[object, ...]] = []
 
                         # Store one component row per scenario component; scenario-level totals are computed later.
-                        for (N_comp, num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
-                            detection_info_by_m = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), {})
+                        for (cluster_size_comp, num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val, chips_inspected_per_cluster in zip(component_data, k_combo, chips_inspected_per_cluster_combo):
+                            detection_info_by_m = detection_grouped.get((cluster_size_comp, k_val), {}).get(int(chips_inspected_per_cluster), {})
                             physical_info = detection_info_by_m.get(float(physical_m_val))
                             if physical_info is None:
                                 continue
@@ -550,17 +566,17 @@ def _build_mix_records(
                                     scenario_id,
                                     mix_description,
                                     total_clusters_in_mix,
-                                    num_clusters_comp * n_val,
-                                    num_clusters_comp * N_comp,
+                                    num_clusters_comp * chips_inspected_per_cluster,
+                                    num_clusters_comp * cluster_size_comp,
                                     scenario_component_count,
                                     "-".join(map(str, k_combo)),
-                                    "-".join(map(str, n_combo)),
-                                    N_comp,
+                                    "-".join(map(str, chips_inspected_per_cluster_combo)),
+                                    cluster_size_comp,
                                     k_val,
                                     k_val * num_clusters_with_smuggling,
                                     num_clusters_comp,
                                     num_clusters_with_smuggling,
-                                    n_val,
+                                    chips_inspected_per_cluster,
                                     physical_m_val,
                                     physical_p_detect,
                                     physical_identified_per_cluster,
@@ -574,10 +590,10 @@ def _build_mix_records(
 
                         scenario_component_records.extend(flat_rows)
 
-                if n_combo_count % 1000 == 0:
+                if chips_inspected_per_cluster_combo_count % 1000 == 0:
                     print(
                         f"build_scenarios: {mix_id} processed {combo_count} K combinations and "
-                        f"{n_combo_count} n combinations; scenario rows so far for mix={scenario_counter}, "
+                        f"{chips_inspected_per_cluster_combo_count} chips-inspected-per-cluster combinations; scenario rows so far for mix={scenario_counter}, "
                         f"scenario-component rows so far for mix={len(scenario_component_records)}"
                     )
 
@@ -747,13 +763,13 @@ def _final_scenario_component_arrow_schema(pa):
             (COLUMN_NAMES['total_component_chips'], pa.int64()),
             (COLUMN_NAMES['scenario_component_count'], pa.int64()),
             (COLUMN_NAMES['k_combo'], pa.string()),
-            (COLUMN_NAMES['n_combo'], pa.string()),
+            (COLUMN_NAMES['chips_inspected_per_cluster_combo'], pa.string()),
             (COLUMN_NAMES['cluster_size'], pa.int64()),
             (COLUMN_NAMES['bad_records'], pa.int64()),
             (COLUMN_NAMES['total_bad_records'], pa.int64()),
             (COLUMN_NAMES['number_of_clusters'], pa.int64()),
             (COLUMN_NAMES['number_of_clusters_with_smuggling'], pa.int64()),
-            (COLUMN_NAMES['tests'], pa.int64()),
+            (COLUMN_NAMES['chips_inspected_per_cluster'], pa.int64()),
             (COLUMN_NAMES['physical_inspection_chip_level_miss_prob'], pa.float64()),
             (COLUMN_NAMES['physical_inspection_p_detect'], pa.float64()),
             (COLUMN_NAMES['physical_inspection_diverted_chips_identified'], pa.float64()),
