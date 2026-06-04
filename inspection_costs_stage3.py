@@ -421,19 +421,20 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
             lambda scenario_type: _scenario_variant_label(scenario_type, plv_type)
         )
 
-        # Add a second metric family that totals smuggled chips by relationship code.
-        smuggled_chips_df = (
-            final_df.groupby(vpc_relationship_column, sort=False, observed=True)[COLUMN_NAMES['bad_records']]
-            .sum()
-            .reindex(RELATIONSHIP_CODE_ORDER)
-            .dropna()
-            .reset_index()
-            .rename(
-                columns={
-                    vpc_relationship_column: COLUMN_NAMES['relationship_code'],
-                    COLUMN_NAMES['bad_records']: COLUMN_NAMES['value'],
-                }
-            )
+        # Add a second metric family with one smuggled-chip value per scenario.
+        smuggled_chips_df = final_df[
+            [
+                COLUMN_NAMES['mix_id'],
+                COLUMN_NAMES['scenario_id'],
+                vpc_relationship_column,
+                COLUMN_NAMES['bad_records'],
+            ]
+        ].copy()
+        smuggled_chips_df = smuggled_chips_df.rename(
+            columns={
+                vpc_relationship_column: COLUMN_NAMES['relationship_code'],
+                COLUMN_NAMES['bad_records']: COLUMN_NAMES['value'],
+            }
         )
         smuggled_chips_df[COLUMN_NAMES['plv_type']] = plv_type
         smuggled_chips_df[COLUMN_NAMES['metric_family']] = SMUGGLED_CHIPS_METRIC_FAMILY
@@ -443,8 +444,6 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         smuggled_chips_df[COLUMN_NAMES['scenario_group']] = SMUGGLED_CHIPS_SCENARIO_GROUP
         smuggled_chips_df[COLUMN_NAMES['scenario_variant']] = SMUGGLED_CHIPS_SCENARIO_VARIANT
         smuggled_chips_df[COLUMN_NAMES['scenario_type']] = SMUGGLED_CHIPS_SCENARIO_TYPE
-        smuggled_chips_df[COLUMN_NAMES['mix_id']] = "All Scenarios"
-        smuggled_chips_df[COLUMN_NAMES['scenario_id']] = "All Scenarios"
         smuggled_chips_df[COLUMN_NAMES['value']] = smuggled_chips_df[COLUMN_NAMES['value']].astype("float64")
 
         boxplot_frames.extend([value_per_cost_df, smuggled_chips_df])
@@ -646,7 +645,6 @@ def _write_relationship_boxplot_values_from_parquet(
     ]
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     grouped_values: dict[tuple[object, ...], list[float]] = {}
-    smuggled_chip_totals: dict[tuple[object, ...], float] = {}
 
     # The group key matches the eventual summary CSV dimensions and plot series.
     group_columns = [
@@ -665,18 +663,10 @@ def _write_relationship_boxplot_values_from_parquet(
             continue
         grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
 
-        # Accumulate raw value-per-cost values by group so quantiles can be computed after all batches are read.
-        # Smuggled-chip rows are already batch-level sums, so they must be summed across batches instead.
+        # Accumulate raw values by group so quantiles can be computed after all batches are read.
         for group_key, values in grouped:
-            group_key = tuple(group_key)
-            if group_key[0] == SMUGGLED_CHIPS_METRIC_FAMILY:
-                smuggled_chip_totals[group_key] = smuggled_chip_totals.get(group_key, 0.0) + float(values.sum())
-            else:
-                grouped_values.setdefault(group_key, []).extend(values.tolist())
+            grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
         print(f"Accumulated {len(boxplot_df)} boxplot rows from current batch")
-
-    for group_key, value in smuggled_chip_totals.items():
-        grouped_values[group_key] = [value]
 
     if not grouped_values:
         empty_summary = _summarize_relationship_boxplot_dataframe(
