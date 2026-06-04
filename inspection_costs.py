@@ -364,6 +364,7 @@ def run_inspection_costs_workflow(
     ensure_gpu_cluster_bucket_counts()
     min_clusters_by_size = get_min_clusters_by_size()
     if extra_min_clusters_by_size is not None:
+        # Merge hand-added cluster minimums with the constraints derived from the source GPU dataset.
         for cluster_size, min_count in extra_min_clusters_by_size.items():
             cluster_size = int(cluster_size)
             min_count = int(min_count)
@@ -389,6 +390,8 @@ def run_inspection_costs_workflow(
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
     steps = list(steps) if steps is not None else None
+
+    # Resolve all output locations once so the rest of the workflow can pass concrete Path objects.
     scenarios_combined_path = Path(SCENARIOS_COMBINED_PARQUET_PATH)
     scenarios_costed_path = Path(SCENARIOS_COSTED_PARQUET_PATH)
     scenarios_costed_perfect_information_path = Path(SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH)
@@ -505,6 +508,7 @@ def run_inspection_costs_workflow(
     ]
     relationship_results: dict[str, tuple[pd.DataFrame, pd.DataFrame, str]] = {}
     for output_config in relationship_outputs:
+        # Run the same relationship-output bundle for each scenario population.
         relationship_results[output_config["label"]] = _write_relationship_outputs(
             parquet_path=output_config["parquet_path"],
             summary_path=output_config["summary_path"],
@@ -521,6 +525,7 @@ def run_inspection_costs_workflow(
         perfect_information_relationship_model_text,
     ) = relationship_results["perfect-information"]
 
+    # Rule summaries need both scenario totals and the component rows that produced those totals.
     relationship_rules_df = _write_relationship_code_rules(
         scenario_df=final_df,
         scenario_component_df=scenario_component_df,

@@ -67,6 +67,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         f"from {len(scenario_component_df)} scenario-component rows"
     )
 
+    # Sum additive quantities while carrying through the identifying mix and parameter-combo fields.
     scenario_summary = grouped.agg(
         Mix_ID=(COLUMN_NAMES['mix_id'], "first"),
         Mix_Description=(COLUMN_NAMES['mix_description'], "first"),
@@ -110,6 +111,8 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "PLV_Total_Diverted_Chips_Identified": COLUMN_NAMES['plv_total_diverted_chips_identified'],
         }
     )
+
+    # Reorder columns to the stable scenario-level schema expected by downstream cost calculations.
     scenario_summary = scenario_summary[
         [
             COLUMN_NAMES['mix_id'],
@@ -149,6 +152,7 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
     ]
     score_column = "Physical - Max Benefit Per Dollar"
 
+    # Stable sorting makes ties deterministic before choosing the best physical-inspection outcome.
     ordered_df = final_df.sort_values(
         group_columns + [COLUMN_NAMES['scenario_id']],
         ascending=[True, True, True, True, True],
@@ -186,6 +190,7 @@ def _classify_interval_relationship(
     compare_min = summary_df[compare_min_column]
     compare_max = summary_df[compare_max_column]
 
+    # Codes describe the full interval relationship between physical and comparison benefit-per-dollar ranges.
     relationship = np.select(
         [
             physical_max < compare_min,
@@ -217,6 +222,7 @@ def _add_plv_variant_cost_benefit_columns(
     max_benefit_per_dollar_column = f"{plv_type} - Max Benefit Per Dollar"
     detected_column = f"{plv_type} - Total Diverted Chips Identified"
 
+    # PLV cost is modeled against the full target chip population, independent of test count.
     result[detected_column] = result[COLUMN_NAMES['plv_total_diverted_chips_identified']]
     result[min_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[0]
     result[max_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[1]
@@ -228,6 +234,8 @@ def _add_plv_variant_cost_benefit_columns(
     )
 
     bpd_relationship_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
+
+    # Compare physical and PLV value ranges after both have min/max benefit-per-dollar columns.
     result[bpd_relationship_column] = _classify_interval_relationship(
         result,
         physical_min_column="Physical - Min Benefit Per Dollar",
@@ -251,6 +259,8 @@ def add_cost_benefit_columns(
     plv_owning_cost_per_total_chip: tuple[float, float] = PLV_OWNING_COST_PER_TOTAL_CHIP,
 ) -> pd.DataFrame:
     result = summary_df.copy()
+
+    # Scenario summaries use total component chips; smaller component-only callers can fall back to cluster size.
     if COLUMN_NAMES['total_component_chips'] in result.columns:
         result[COLUMN_NAMES['share_diverted']] = result[COLUMN_NAMES['bad_records']] / result[COLUMN_NAMES['total_component_chips']]
     else:
@@ -272,6 +282,7 @@ def add_cost_benefit_columns(
         result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] / result["Physical Inspection - Min Total Cost"]
     )
 
+    # Add the same PLV-derived columns for each configured PLV cost model.
     for variant in _plv_variant_specs():
         plv_type = str(variant["plv_type"])
         plv_cost_per_total_chip = (

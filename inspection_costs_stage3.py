@@ -97,6 +97,8 @@ def _summarize_relationship_rule_bounds(
     plv_type: str,
 ) -> pd.DataFrame:
     relationship_labels = _plv_relationship_labels(plv_type)
+
+    # Feature specs define which scenario fields are summarized into human-readable rule clauses.
     feature_specs = [
         {
             "feature": COLUMN_NAMES['total_clusters_in_mix'],
@@ -154,6 +156,8 @@ def _summarize_relationship_rule_bounds(
             "source_columns": ["component_cluster_count_min", "component_cluster_count_max"],
         },
     ]
+
+    # Drop invariant features so the rules focus on values that actually separate scenarios.
     feature_specs = [
         feature_spec
         for feature_spec in feature_specs
@@ -373,6 +377,8 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         plv_type = str(variant["plv_type"])
         bpd_relationship_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
         bpd_relationship_labels = _plv_relationship_labels(plv_type)
+
+        # Melt min/max physical and PLV benefit-per-dollar columns into one plotting value column.
         benefit_per_dollar_source_columns = [
             column
             for column in [
@@ -417,6 +423,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
             lambda scenario_type: _scenario_variant_label(scenario_type, plv_type)
         )
 
+        # Add a second metric family that totals smuggled chips by relationship code.
         smuggled_chips_df = (
             final_df.groupby(bpd_relationship_column, sort=False, observed=True)[COLUMN_NAMES['bad_records']]
             .sum()
@@ -532,6 +539,7 @@ def _render_relationship_boxplot_images(
     if not grouped_values:
         return saved_paths
 
+    # Render one image per metric-family and PLV-type pair so legends and axes stay readable.
     family_names = sorted(
         {(group_key[0], group_key[1]) for group_key in grouped_values},
         key=lambda item: (item[0], PLV_VARIANT_ORDER.index(item[1]) if item[1] in PLV_VARIANT_ORDER else len(PLV_VARIANT_ORDER)),
@@ -551,6 +559,8 @@ def _render_relationship_boxplot_images(
             continue
 
         family_label = f"{metric_family} - {plv_type}"
+
+        # Width and offsets scale with the number of relationship codes and scenario series plotted together.
         fig_width = max(10.0, len(relationship_codes) * max(1.6, 0.55 * len(scenario_types)))
         fig, ax = plt.subplots(figsize=(fig_width, 6.5))
         color_map = plt.get_cmap("tab10")
@@ -638,6 +648,8 @@ def _write_relationship_boxplot_values_from_parquet(
     ]
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     grouped_values: dict[tuple[object, ...], list[float]] = {}
+
+    # The group key matches the eventual summary CSV dimensions and plot series.
     group_columns = [
         COLUMN_NAMES['metric_family'],
         COLUMN_NAMES['plv_type'],
@@ -653,6 +665,8 @@ def _write_relationship_boxplot_values_from_parquet(
             print("Processed boxplot batch with 0 rows")
             continue
         grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
+
+        # Accumulate raw values by group so quantiles can be computed after all batches are read.
         for group_key, values in grouped:
             grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
         print(f"Accumulated {len(boxplot_df)} boxplot rows from current batch")
@@ -666,6 +680,8 @@ def _write_relationship_boxplot_values_from_parquet(
         return empty_summary
 
     summary_rows = []
+
+    # Convert accumulated raw values into the distribution statistics used by the CSV and plots.
     for group_key, values in grouped_values.items():
         value_series = pd.Series(values, dtype="float64")
         summary_rows.append(
@@ -710,6 +726,7 @@ def _relationship_model_feature_frame(source_df: pd.DataFrame) -> pd.DataFrame:
     plv_renting_min_cost = source_df["PLV Renting - Min Total Cost"].astype("float64")
     plv_owning_min_cost = source_df["PLV Owning - Min Total Cost"].astype("float64")
 
+    # Features combine scenario scale, smuggling intensity, detected-share ratios, and cost intensity.
     features = pd.DataFrame(
         {
             "log_total_clusters_in_mix": np.log1p(total_clusters),
@@ -760,6 +777,8 @@ def _collect_relationship_model_sample_from_parquet(
         target_values = batch_df[target_column].astype(str)
         class_counts.update(target_values.tolist())
         feature_df = _relationship_model_feature_frame(batch_df)
+
+        # Cap each class independently so common relationship codes do not dominate the fitted model.
         for relationship_code, group_index in target_values.groupby(target_values).groups.items():
             remaining = max_rows_per_class - sampled_counts[relationship_code]
             if remaining <= 0:
@@ -819,6 +838,8 @@ def _fit_multinomial_logistic_regression(
     test_indices = shuffled_indices[:test_size]
 
     feature_matrix = features.to_numpy(dtype="float64")
+
+    # Standardize predictors on the training split and add an intercept column.
     feature_mean = feature_matrix[train_indices].mean(axis=0)
     feature_std = feature_matrix[train_indices].std(axis=0)
     feature_std[feature_std == 0] = 1.0
@@ -834,6 +855,8 @@ def _fit_multinomial_logistic_regression(
 
     weights = np.zeros((design_matrix.shape[1], len(class_labels)), dtype="float64")
     encoded_train_y = np.eye(len(class_labels), dtype="float64")[train_y]
+
+    # Optimize multinomial cross-entropy with L2 regularization on non-intercept weights.
     for _iteration in range(max_iter):
         logits = train_x @ weights
         logits -= logits.max(axis=1, keepdims=True)
@@ -849,6 +872,7 @@ def _fit_multinomial_logistic_regression(
     for actual, predicted in zip(test_y, predictions):
         confusion[actual, predicted] += 1
 
+    # Summarize holdout performance with both overall and class-balanced metrics.
     accuracy = float((predictions == test_y).mean())
     baseline_accuracy = float(np.bincount(test_y, minlength=len(class_labels)).max() / len(test_y))
     recalls = []
@@ -898,6 +922,8 @@ def _format_relationship_model_report(
         "",
         "Full-data relationship-code counts:",
     ]
+
+    # Include both full-data counts and sampled counts so the report makes sampling effects visible.
     for code in sorted(full_class_counts):
         lines.append(f"  {code}: {full_class_counts[code]:,}")
 
@@ -913,6 +939,7 @@ def _format_relationship_model_report(
 
     lines.extend(["", "Largest standardized coefficients by relationship code:"])
     for class_index, code in enumerate(class_labels):
+        # Positive and negative coefficients identify predictors associated with each relationship code.
         coefficients = pd.Series(weights[1:, class_index], index=sampled_features.columns)
         top_positive = coefficients.sort_values(ascending=False).head(5)
         top_negative = coefficients.sort_values(ascending=True).head(5)
@@ -983,6 +1010,7 @@ def write_relationship_code_model_report(
     ]
 
     for target_column in target_columns:
+        # Each PLV variant gets its own target because the relationship labels are variant-specific.
         sampled_features, sampled_targets, full_class_counts = _collect_relationship_model_sample_from_parquet(
             parquet_path,
             target_column,

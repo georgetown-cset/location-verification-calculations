@@ -139,6 +139,8 @@ def build_mix_data(
     steps = list(steps)
     if min_clusters_by_size is None:
         min_clusters_by_size = {}
+
+    # Validate the externally supplied minimums before generating any potentially large mix grid.
     unknown_cluster_sizes = sorted(set(min_clusters_by_size) - set(cluster_sizes))
     if unknown_cluster_sizes:
         raise ValueError(
@@ -156,6 +158,8 @@ def build_mix_data(
     for _mix_index, proportions in _iter_valid_mix_proportions(steps, len(cluster_sizes)):
         active_components = [(n, p) for n, p in zip(cluster_sizes, proportions) if p > 0]
         current_mix: list[dict[str, int]] = []
+
+        # Convert each active proportion into an integer cluster count for that cluster size.
         for cluster_size, proportion in active_components:
             count = (target_chips * proportion) / cluster_size
             if count != int(count):
@@ -174,6 +178,7 @@ def build_mix_data(
         if not _mix_satisfies_minimum_cluster_counts(current_mix, min_clusters_by_size):
             continue
 
+        # Canonicalize and deduplicate mixes because different proportion paths can describe the same mix.
         current_mix.sort(key=lambda component: component[COLUMN_NAMES['cluster_size']])
         mix_id = build_mix_id(current_mix)
         if mix_id in seen_mix_ids:
@@ -358,6 +363,8 @@ def build_scenarios(
     )
     print(f"build_scenarios: received {len(mix_data)} mixes from build_mix_data")
     detection_grouped = _group_detection_lookup(detection_lookup_table)
+
+    # Pre-filter K values by cluster size so later Cartesian products never include impossible diversions.
     k_options_by_cluster_size = {
         int(cluster_size): [int(k) for k in k_vals if k <= cluster_size]
         for cluster_size in cluster_sizes
@@ -409,9 +416,11 @@ def build_scenarios(
         )
 
         if return_dataframe:
+            # Read the dataset back only when callers need an in-memory frame for downstream processing.
             return pd.read_parquet(component_dataset_path)
         return pd.DataFrame(columns=SCENARIO_COLUMNS)
 
+    # In-memory mode is primarily useful for tests or small parameter grids.
     scenario_component_records: list[tuple[object, ...]] = []
     for mix_components in mix_data:
         mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
@@ -486,6 +495,7 @@ def _build_mix_records(
         f"with {len(mix_components)} components and {total_clusters_in_mix} total clusters"
     )
 
+    # Component metadata packages cluster size, cluster count, smuggling count, weight, and valid K options.
     component_data = [
         (
             component[COLUMN_NAMES['cluster_size']],
@@ -502,9 +512,11 @@ def _build_mix_records(
     ]
     scenario_counter = 0
 
+    # A scenario chooses one diverted-chip count for each component in the mix.
     for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
         n_options_per_component: list[tuple[int, ...]] = []
         for (N_comp, _num_clusters_comp, _num_clusters_with_smuggling, _weight_pct, _), k_val in zip(component_data, k_combo):
+            # Test-count options come from the detection table and are keyed by the selected N and K.
             n_options = detection_grouped.get((N_comp, int(k_val)), {})
             if not n_options:
                 break
@@ -520,6 +532,8 @@ def _build_mix_records(
                             f"_pm{physical_m_val}_plvm{plv_m_val}"
                         )
                         flat_rows: list[tuple[object, ...]] = []
+
+                        # Store one component row per scenario component; scenario-level totals are computed later.
                         for (N_comp, num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val, n_val in zip(component_data, k_combo, n_combo):
                             detection_info_by_m = detection_grouped.get((N_comp, k_val), {}).get(int(n_val), {})
                             physical_info = detection_info_by_m.get(float(physical_m_val))
