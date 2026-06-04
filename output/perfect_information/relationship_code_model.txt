@@ -33,63 +33,63 @@ Target: Physical vs PLV Renting Benefit Per Dollar Relationship
 Sampled rows: 2,048
 Training rows: 1,536
 Holdout rows: 512
-Holdout accuracy: 0.986
+Holdout accuracy: 0.980
 Majority-class baseline accuracy on holdout: 0.783
-Macro precision: 0.972
-Macro recall: 0.935
+Macro precision: 0.961
+Macro recall: 0.907
 
 Full-data relationship-code counts:
-  a: 1,632
-  b: 128
+  a: 1,633
+  b: 127
   c: 288
 
 Balanced training-sample counts:
-  a: 1,632
-  b: 128
+  a: 1,633
+  b: 127
   c: 288
 
 Holdout confusion matrix (rows=actual, columns=predicted):
          a        b        c
          a      401        0        0
-         b        0       29        7
+         b        0       26       10
          c        0        0       75
 
 Largest standardized coefficients by relationship code:
   Code a positive associations:
-    scenario_component_count: 1.282
-    log_total_clusters_in_mix: 0.743
-    plv_renting_cost_per_chip: 0.556
-    plv_cost_spread_per_chip: 0.556
-    log_total_tests: 0.313
+    scenario_component_count: 1.289
+    log_total_clusters_in_mix: 0.754
+    plv_renting_cost_per_chip: 0.562
+    plv_cost_spread_per_chip: 0.562
+    log_total_tests: 0.308
   Code a negative associations:
-    plv_owning_cost_per_chip: -0.556
-    bad_records_per_test: -0.310
-    tests_per_cluster: -0.280
-    plv_owning_identified_share: -0.073
-    plv_renting_identified_share: -0.073
+    plv_owning_cost_per_chip: -0.562
+    bad_records_per_test: -0.304
+    plv_owning_minus_physical_detected_share: -0.059
+    plv_renting_minus_physical_detected_share: -0.059
+    plv_owning_identified_share: -0.043
   Code b positive associations:
-    log_total_tests: 0.407
-    tests_per_cluster: 0.267
-    log_total_clusters_in_mix: 0.236
-    share_diverted: 0.230
-    plv_owning_cost_per_chip: 0.215
+    log_total_tests: 0.419
+    share_diverted: 0.234
+    plv_owning_cost_per_chip: 0.224
+    log_total_clusters_in_mix: 0.217
+    log_bad_records: 0.179
   Code b negative associations:
-    scenario_component_count: -0.965
-    plv_cost_spread_per_chip: -0.215
-    plv_renting_cost_per_chip: -0.215
-    bad_records_per_test: -0.208
-    physical_to_plv_owning_detected_ratio: -0.100
+    scenario_component_count: -0.972
+    bad_records_per_test: -0.236
+    plv_cost_spread_per_chip: -0.224
+    plv_renting_cost_per_chip: -0.224
+    physical_min_cost_per_test: -0.108
   Code c positive associations:
-    bad_records_per_test: 0.518
-    plv_owning_cost_per_chip: 0.341
-    physical_identified_share: 0.051
-    physical_to_plv_owning_detected_ratio: 0.047
-    physical_to_plv_renting_detected_ratio: 0.047
+    bad_records_per_test: 0.539
+    plv_owning_cost_per_chip: 0.338
+    physical_identified_share: 0.049
+    physical_to_plv_owning_detected_ratio: 0.049
+    physical_to_plv_renting_detected_ratio: 0.049
   Code c negative associations:
-    log_total_clusters_in_mix: -0.979
-    log_total_tests: -0.720
-    plv_renting_cost_per_chip: -0.341
-    plv_cost_spread_per_chip: -0.341
+    log_total_clusters_in_mix: -0.971
+    log_total_tests: -0.726
+    plv_renting_cost_per_chip: -0.338
+    plv_cost_spread_per_chip: -0.338
     scenario_component_count: -0.317
 
 ------------------------------------------
@@ -98,63 +98,63 @@ Target: Physical vs PLV Owning Benefit Per Dollar Relationship
 Sampled rows: 2,048
 Training rows: 1,536
 Holdout rows: 512
-Holdout accuracy: 0.977
+Holdout accuracy: 0.980
 Majority-class baseline accuracy on holdout: 0.854
-Macro precision: 0.916
-Macro recall: 0.943
+Macro precision: 0.946
+Macro recall: 0.955
 
 Full-data relationship-code counts:
   a: 1,760
-  b: 174
-  c: 114
+  b: 182
+  c: 106
 
 Balanced training-sample counts:
   a: 1,760
-  b: 174
-  c: 114
+  b: 182
+  c: 106
 
 Holdout confusion matrix (rows=actual, columns=predicted):
          a        b        c
          a      432        5        0
-         b        3       49        3
+         b        3       51        1
          c        0        1       19
 
 Largest standardized coefficients by relationship code:
   Code a positive associations:
-    log_total_clusters_in_mix: 1.018
-    log_total_tests: 0.733
-    plv_renting_cost_per_chip: 0.712
-    plv_cost_spread_per_chip: 0.712
-    scenario_component_count: 0.438
+    log_total_clusters_in_mix: 1.010
+    log_total_tests: 0.738
+    plv_renting_cost_per_chip: 0.716
+    plv_cost_spread_per_chip: 0.716
+    scenario_component_count: 0.426
   Code a negative associations:
-    plv_owning_cost_per_chip: -0.712
-    bad_records_per_test: -0.530
-    physical_identified_share: -0.085
-    physical_to_plv_owning_detected_ratio: -0.065
-    physical_to_plv_renting_detected_ratio: -0.065
+    plv_owning_cost_per_chip: -0.716
+    bad_records_per_test: -0.531
+    physical_identified_share: -0.091
+    physical_to_plv_owning_detected_ratio: -0.070
+    physical_to_plv_renting_detected_ratio: -0.070
   Code b positive associations:
-    plv_owning_cost_per_chip: 0.258
-    tests_per_cluster: 0.255
-    physical_cost_range_per_test: 0.197
-    physical_min_cost_per_test: 0.197
-    plv_renting_identified_share: 0.064
+    plv_owning_cost_per_chip: 0.257
+    tests_per_cluster: 0.209
+    physical_cost_range_per_test: 0.169
+    physical_min_cost_per_test: 0.169
+    plv_renting_identified_share: 0.052
   Code b negative associations:
-    scenario_component_count: -0.497
-    log_total_clusters_in_mix: -0.268
-    plv_renting_cost_per_chip: -0.258
-    plv_cost_spread_per_chip: -0.258
-    log_total_tests: -0.212
+    scenario_component_count: -0.484
+    log_total_clusters_in_mix: -0.301
+    plv_renting_cost_per_chip: -0.257
+    plv_cost_spread_per_chip: -0.257
+    log_total_tests: -0.240
   Code c positive associations:
-    bad_records_per_test: 0.515
-    plv_owning_cost_per_chip: 0.454
-    physical_identified_share: 0.081
-    physical_to_plv_owning_detected_ratio: 0.077
-    physical_to_plv_renting_detected_ratio: 0.077
+    bad_records_per_test: 0.520
+    plv_owning_cost_per_chip: 0.459
+    physical_identified_share: 0.104
+    physical_to_plv_owning_detected_ratio: 0.095
+    physical_to_plv_renting_detected_ratio: 0.095
   Code c negative associations:
-    log_total_clusters_in_mix: -0.749
-    log_total_tests: -0.520
-    plv_renting_cost_per_chip: -0.454
-    plv_cost_spread_per_chip: -0.454
-    tests_per_cluster: -0.342
+    log_total_clusters_in_mix: -0.709
+    log_total_tests: -0.499
+    plv_renting_cost_per_chip: -0.459
+    plv_cost_spread_per_chip: -0.459
+    physical_min_cost_per_test: -0.318
 
 ------------------------------------------
