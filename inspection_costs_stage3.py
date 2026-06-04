@@ -300,7 +300,7 @@ def _write_relationship_code_rules_from_dataframes(
     summary_frames: list[pd.DataFrame] = []
     for variant in _plv_variant_specs():
         plv_type = str(variant["plv_type"])
-        relationship_code_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
+        relationship_code_column = f"Physical vs {plv_type} Value Per Cost Relationship"
         if relationship_code_column not in rule_source_df.columns:
             continue
         summary_frames.append(
@@ -326,24 +326,24 @@ def _summarize_relationships_from_parquet(
     summaries = []
     for variant in _plv_variant_specs():
         plv_type = str(variant["plv_type"])
-        bpd_relationship_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
-        bpd_relationship_labels = _plv_relationship_labels(plv_type)
-        benefit_per_dollar_counts: Counter[str] = Counter()
+        vpc_relationship_column = f"Physical vs {plv_type} Value Per Cost Relationship"
+        vpc_relationship_labels = _plv_relationship_labels(plv_type)
+        value_per_cost_counts: Counter[str] = Counter()
 
         for batch_df in _iter_parquet_batches(
             parquet_path,
-            columns=[bpd_relationship_column],
+            columns=[vpc_relationship_column],
             batch_size=batch_size,
         ):
-            benefit_per_dollar_counts.update(batch_df[bpd_relationship_column].astype(str).tolist())
+            value_per_cost_counts.update(batch_df[vpc_relationship_column].astype(str).tolist())
 
-        benefit_per_dollar_summary = pd.DataFrame(
+        value_per_cost_summary = pd.DataFrame(
             {
-                COLUMN_NAMES['plv_type']: [plv_type] * len(bpd_relationship_labels),
-                COLUMN_NAMES['relationship_code']: list(bpd_relationship_labels.keys()),
-                COLUMN_NAMES['benefit_per_dollar_relationship_description']: list(bpd_relationship_labels.values()),
-                COLUMN_NAMES['benefit_per_dollar_scenario_count']: [
-                    int(benefit_per_dollar_counts.get(code, 0)) for code in bpd_relationship_labels.keys()
+                COLUMN_NAMES['plv_type']: [plv_type] * len(vpc_relationship_labels),
+                COLUMN_NAMES['relationship_code']: list(vpc_relationship_labels.keys()),
+                COLUMN_NAMES['value_per_cost_relationship_description']: list(vpc_relationship_labels.values()),
+                COLUMN_NAMES['value_per_cost_scenario_count']: [
+                    int(value_per_cost_counts.get(code, 0)) for code in vpc_relationship_labels.keys()
                 ],
             }
         )
@@ -351,11 +351,11 @@ def _summarize_relationships_from_parquet(
             {
                 COLUMN_NAMES['plv_type']: [plv_type],
                 COLUMN_NAMES['relationship_code']: ["Total"],
-                COLUMN_NAMES['benefit_per_dollar_relationship_description']: ["All scenarios"],
-                COLUMN_NAMES['benefit_per_dollar_scenario_count']: [int(sum(benefit_per_dollar_counts.values()))],
+                COLUMN_NAMES['value_per_cost_relationship_description']: ["All scenarios"],
+                COLUMN_NAMES['value_per_cost_scenario_count']: [int(sum(value_per_cost_counts.values()))],
             }
         )
-        summaries.append(pd.concat([benefit_per_dollar_summary, total_row], ignore_index=True))
+        summaries.append(pd.concat([value_per_cost_summary, total_row], ignore_index=True))
 
     result = pd.concat(summaries, ignore_index=True)
     result[COLUMN_NAMES['plv_type']] = pd.Categorical(result[COLUMN_NAMES['plv_type']], categories=PLV_VARIANT_ORDER, ordered=True)
@@ -375,64 +375,64 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
     boxplot_frames: list[pd.DataFrame] = []
     for variant in _plv_variant_specs():
         plv_type = str(variant["plv_type"])
-        bpd_relationship_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
-        bpd_relationship_labels = _plv_relationship_labels(plv_type)
+        vpc_relationship_column = f"Physical vs {plv_type} Value Per Cost Relationship"
+        vpc_relationship_labels = _plv_relationship_labels(plv_type)
 
-        # Melt min/max physical and PLV benefit-per-dollar columns into one plotting value column.
-        benefit_per_dollar_source_columns = [
+        # Melt min/max physical and PLV value-per-cost columns into one plotting value column.
+        value_per_cost_source_columns = [
             column
             for column in [
                 COLUMN_NAMES['mix_id'],
                 COLUMN_NAMES['scenario_id'],
-                bpd_relationship_column,
-                "Physical - Min Benefit Per Dollar",
-                "Physical - Max Benefit Per Dollar",
-                f"{plv_type} - Min Benefit Per Dollar",
-                f"{plv_type} - Max Benefit Per Dollar",
+                vpc_relationship_column,
+                "Physical - Min Value Per Cost",
+                "Physical - Max Value Per Cost",
+                f"{plv_type} - Min Value Per Cost",
+                f"{plv_type} - Max Value Per Cost",
             ]
             if column in final_df.columns
         ]
-        benefit_per_dollar_id_vars = [
+        value_per_cost_id_vars = [
             column
-            for column in [COLUMN_NAMES['mix_id'], COLUMN_NAMES['scenario_id'], bpd_relationship_column]
-            if column in benefit_per_dollar_source_columns
+            for column in [COLUMN_NAMES['mix_id'], COLUMN_NAMES['scenario_id'], vpc_relationship_column]
+            if column in value_per_cost_source_columns
         ]
-        benefit_per_dollar_df = final_df[benefit_per_dollar_source_columns].melt(
-            id_vars=benefit_per_dollar_id_vars,
+        value_per_cost_df = final_df[value_per_cost_source_columns].melt(
+            id_vars=value_per_cost_id_vars,
             value_vars=[
-                "Physical - Min Benefit Per Dollar",
-                "Physical - Max Benefit Per Dollar",
-                f"{plv_type} - Min Benefit Per Dollar",
-                f"{plv_type} - Max Benefit Per Dollar",
+                "Physical - Min Value Per Cost",
+                "Physical - Max Value Per Cost",
+                f"{plv_type} - Min Value Per Cost",
+                f"{plv_type} - Max Value Per Cost",
             ],
             var_name=COLUMN_NAMES['scenario_type'],
             value_name=COLUMN_NAMES['value'],
         )
-        benefit_per_dollar_df[COLUMN_NAMES['metric_family']] = "Benefit Per Dollar"
-        benefit_per_dollar_df[COLUMN_NAMES['plv_type']] = plv_type
-        benefit_per_dollar_df[COLUMN_NAMES['relationship_code']] = benefit_per_dollar_df[bpd_relationship_column]
-        benefit_per_dollar_df[COLUMN_NAMES['relationship_description']] = benefit_per_dollar_df[COLUMN_NAMES['relationship_code']].map(
-            bpd_relationship_labels
+        value_per_cost_df[COLUMN_NAMES['metric_family']] = "Value Per Cost"
+        value_per_cost_df[COLUMN_NAMES['plv_type']] = plv_type
+        value_per_cost_df[COLUMN_NAMES['relationship_code']] = value_per_cost_df[vpc_relationship_column]
+        value_per_cost_df[COLUMN_NAMES['relationship_description']] = value_per_cost_df[COLUMN_NAMES['relationship_code']].map(
+            vpc_relationship_labels
         )
-        benefit_per_dollar_df[COLUMN_NAMES['scenario_group']] = np.where(
-            benefit_per_dollar_df[COLUMN_NAMES['scenario_type']].str.startswith("Physical"),
+        value_per_cost_df[COLUMN_NAMES['scenario_group']] = np.where(
+            value_per_cost_df[COLUMN_NAMES['scenario_type']].str.startswith("Physical"),
             "Physical Inspection",
             plv_type,
         )
-        benefit_per_dollar_df[COLUMN_NAMES['scenario_variant']] = benefit_per_dollar_df[COLUMN_NAMES['scenario_type']].map(
+        value_per_cost_df[COLUMN_NAMES['scenario_variant']] = value_per_cost_df[COLUMN_NAMES['scenario_type']].map(
             lambda scenario_type: _scenario_variant_label(scenario_type, plv_type)
         )
 
         # Add a second metric family that totals smuggled chips by relationship code.
         smuggled_chips_df = (
-            final_df.groupby(bpd_relationship_column, sort=False, observed=True)[COLUMN_NAMES['bad_records']]
+            final_df.groupby(vpc_relationship_column, sort=False, observed=True)[COLUMN_NAMES['bad_records']]
             .sum()
             .reindex(RELATIONSHIP_CODE_ORDER)
             .dropna()
             .reset_index()
             .rename(
                 columns={
-                    bpd_relationship_column: COLUMN_NAMES['relationship_code'],
+                    vpc_relationship_column: COLUMN_NAMES['relationship_code'],
                     COLUMN_NAMES['bad_records']: COLUMN_NAMES['value'],
                 }
             )
@@ -440,7 +440,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         smuggled_chips_df[COLUMN_NAMES['plv_type']] = plv_type
         smuggled_chips_df[COLUMN_NAMES['metric_family']] = SMUGGLED_CHIPS_METRIC_FAMILY
         smuggled_chips_df[COLUMN_NAMES['relationship_description']] = smuggled_chips_df[COLUMN_NAMES['relationship_code']].map(
-            bpd_relationship_labels
+            vpc_relationship_labels
         )
         smuggled_chips_df[COLUMN_NAMES['scenario_group']] = SMUGGLED_CHIPS_SCENARIO_GROUP
         smuggled_chips_df[COLUMN_NAMES['scenario_variant']] = SMUGGLED_CHIPS_SCENARIO_VARIANT
@@ -449,7 +449,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         smuggled_chips_df[COLUMN_NAMES['scenario_id']] = "All Scenarios"
         smuggled_chips_df[COLUMN_NAMES['value']] = smuggled_chips_df[COLUMN_NAMES['value']].astype("float64")
 
-        boxplot_frames.extend([benefit_per_dollar_df, smuggled_chips_df])
+        boxplot_frames.extend([value_per_cost_df, smuggled_chips_df])
 
     boxplot_df = pd.concat(boxplot_frames, ignore_index=True)
     output_columns = [
@@ -641,8 +641,8 @@ def _write_relationship_boxplot_values_from_parquet(
     columns = [
         COLUMN_NAMES['mix_id'],
         COLUMN_NAMES['scenario_id'],
-        "Physical vs PLV Renting Benefit Per Dollar Relationship",
-        "Physical vs PLV Owning Benefit Per Dollar Relationship",
+        "Physical vs PLV Renting Value Per Cost Relationship",
+        "Physical vs PLV Owning Value Per Cost Relationship",
         COLUMN_NAMES['bad_records'],
         *LONG_SCENARIO_VALUE_VARS,
     ]
@@ -991,8 +991,8 @@ def write_relationship_code_model_report(
 ) -> str:
     if target_columns is None:
         target_columns = [
-            "Physical vs PLV Renting Benefit Per Dollar Relationship",
-            "Physical vs PLV Owning Benefit Per Dollar Relationship",
+            "Physical vs PLV Renting Value Per Cost Relationship",
+            "Physical vs PLV Owning Value Per Cost Relationship",
         ]
 
     output_text_path.parent.mkdir(parents=True, exist_ok=True)

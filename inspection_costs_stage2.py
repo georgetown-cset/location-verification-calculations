@@ -150,7 +150,7 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
         COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
         COLUMN_NAMES['plv_chip_level_miss_prob'],
     ]
-    score_column = "Physical - Max Benefit Per Dollar"
+    score_column = "Physical - Max Value Per Cost"
 
     # Stable sorting makes ties deterministic before choosing the best physical-inspection outcome.
     ordered_df = final_df.sort_values(
@@ -190,7 +190,7 @@ def _classify_interval_relationship(
     compare_min = summary_df[compare_min_column]
     compare_max = summary_df[compare_max_column]
 
-    # Codes describe the full interval relationship between physical and comparison benefit-per-dollar ranges.
+    # Codes describe the full interval relationship between physical and comparison value-per-cost ranges.
     relationship = np.select(
         [
             physical_max < compare_min,
@@ -209,8 +209,8 @@ def _classify_interval_relationship(
     return result
 
 
-# Add cost, benefit-per-dollar, and relationship-code columns for a single PLV variant.
-def _add_plv_variant_cost_benefit_columns(
+# Add cost, value-per-cost, and relationship-code columns for a single PLV variant.
+def _add_plv_variant_cost_value_columns(
     result: pd.DataFrame,
     *,
     plv_type: str,
@@ -218,40 +218,40 @@ def _add_plv_variant_cost_benefit_columns(
 ) -> None:
     min_cost_column = f"{plv_type} - Min Total Cost"
     max_cost_column = f"{plv_type} - Max Total Cost"
-    min_benefit_per_dollar_column = f"{plv_type} - Min Benefit Per Dollar"
-    max_benefit_per_dollar_column = f"{plv_type} - Max Benefit Per Dollar"
+    min_value_per_cost_column = f"{plv_type} - Min Value Per Cost"
+    max_value_per_cost_column = f"{plv_type} - Max Value Per Cost"
     detected_column = f"{plv_type} - Total Diverted Chips Identified"
 
     # PLV cost is modeled against the full target chip population, independent of test count.
     result[detected_column] = result[COLUMN_NAMES['plv_total_diverted_chips_identified']]
     result[min_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[0]
     result[max_cost_column] = TARGET_CHIPS * plv_cost_per_total_chip[1]
-    result[min_benefit_per_dollar_column] = (
+    result[min_value_per_cost_column] = (
         result[detected_column] * PLV_DISCOUNT_RATE / result[max_cost_column]
     )
-    result[max_benefit_per_dollar_column] = (
+    result[max_value_per_cost_column] = (
         result[detected_column] * PLV_DISCOUNT_RATE / result[min_cost_column]
     )
 
-    bpd_relationship_column = f"Physical vs {plv_type} Benefit Per Dollar Relationship"
+    vpc_relationship_column = f"Physical vs {plv_type} Value Per Cost Relationship"
 
-    # Compare physical and PLV value ranges after both have min/max benefit-per-dollar columns.
-    result[bpd_relationship_column] = _classify_interval_relationship(
+    # Compare physical and PLV value ranges after both have min/max value-per-cost columns.
+    result[vpc_relationship_column] = _classify_interval_relationship(
         result,
-        physical_min_column="Physical - Min Benefit Per Dollar",
-        physical_max_column="Physical - Max Benefit Per Dollar",
-        compare_min_column=min_benefit_per_dollar_column,
-        compare_max_column=max_benefit_per_dollar_column,
-        output_column=bpd_relationship_column,
+        physical_min_column="Physical - Min Value Per Cost",
+        physical_max_column="Physical - Max Value Per Cost",
+        compare_min_column=min_value_per_cost_column,
+        compare_max_column=max_value_per_cost_column,
+        output_column=vpc_relationship_column,
         error_message=(
-            f"Encountered an unexpected physical-vs-{plv_type} benefit-per-dollar relationship; "
+            f"Encountered an unexpected physical-vs-{plv_type} value-per-cost relationship; "
             "check the interval classification logic."
         ),
     )
 
 
-# Add physical-inspection and PLV cost-benefit columns to a scenario summary dataframe.
-def add_cost_benefit_columns(
+# Add physical-inspection and PLV cost-value columns to a scenario summary dataframe.
+def add_cost_value_columns(
     summary_df: pd.DataFrame,
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
     phys_inspection_fixed_cost_per_inspection: tuple[float, float] = PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION,
@@ -275,10 +275,10 @@ def add_cost_benefit_columns(
         (result[COLUMN_NAMES['total_clusters_in_mix']] * phys_inspection_fixed_cost_per_inspection[1]
         + result[COLUMN_NAMES['total_tests']] * phys_inspection_salary_cost_per_tested_chip[1])*NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR
     )
-    result["Physical - Min Benefit Per Dollar"] = (
+    result["Physical - Min Value Per Cost"] = (
         result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] / result["Physical Inspection - Max Total Cost"]
     )
-    result["Physical - Max Benefit Per Dollar"] = (
+    result["Physical - Max Value Per Cost"] = (
         result[COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']] / result["Physical Inspection - Min Total Cost"]
     )
 
@@ -288,7 +288,7 @@ def add_cost_benefit_columns(
         plv_cost_per_total_chip = (
             plv_renting_cost_per_total_chip if plv_type == "PLV Renting" else plv_owning_cost_per_total_chip
         )
-        _add_plv_variant_cost_benefit_columns(
+        _add_plv_variant_cost_value_columns(
             result,
             plv_type=plv_type,
             plv_cost_per_total_chip=plv_cost_per_total_chip,

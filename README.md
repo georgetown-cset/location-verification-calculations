@@ -5,7 +5,7 @@ This repository models the cost effectiveness of two approaches for detecting wh
 - Physical inspections, where a limited number of chips in a cluster are tested directly.
 - Ping-based location verification (PLV), which uses the time delay for a 
 
-The model generates possible GPU cluster mixes, diversion scenarios, testing strategies, and detection probabilities. It then estimates costs, expected diverted chips identified, and benefit per dollar for physical inspections and two PLV variants: renting landmark servers and owning landmark servers.
+The model generates possible GPU cluster mixes, diversion scenarios, testing strategies, and detection probabilities. It then estimates costs, expected diverted chips identified, and value per cost for physical inspections and two PLV variants: renting landmark servers and owning landmark servers.
 
 ## Model Overview
 
@@ -19,8 +19,8 @@ For each valid scenario, the pipeline computes:
 - Expected diverted chips identified by PLV.
 - Minimum and maximum inspection costs.
 - Minimum and maximum PLV costs for renting and owning variants.
-- Benefit per dollar for physical inspection and PLV.
-- Relationship codes showing how physical-inspection benefit-per-dollar ranges compare with each PLV range.
+- Value per cost for physical inspection and PLV.
+- Relationship codes showing how physical-inspection value-per-cost ranges compare with each PLV range.
 
 The top-level entry point is `inspection_costs.py`. Running it executes all stages and writes cached parquet data plus CSV, text, and image outputs. Run from the repository root:
 
@@ -60,15 +60,15 @@ Key outputs:
 
 ### Stage 2: Scenario Costing
 
-`inspection_costs_stage2.py` aggregates component rows to scenario-level rows and adds cost-benefit metrics.
+`inspection_costs_stage2.py` aggregates component rows to scenario-level rows and adds cost and value metrics.
 
 It:
 
 - Collapses scenario components into one row per full scenario.
 - Adds physical-inspection cost ranges.
 - Adds PLV renting and owning cost ranges.
-- Computes benefit per dollar for physical inspection and PLV.
-- Classifies physical-vs-PLV benefit-per-dollar relationships with codes `a` through `f`.
+- Computes value per cost for physical inspection and PLV.
+- Classifies physical-vs-PLV value-per-cost relationships with codes `a` through `f`.
 - Builds a perfect-information subset that keeps the best physical-inspection scenario within each comparable group.
 
 Key outputs:
@@ -141,7 +141,7 @@ Key outputs:
 
 - `inspection_costs.py`: Main workflow entry point and shared constants. It coordinates all stages and defines output paths.
 - `inspection_costs_stage1.py`: Detection lookup, cluster-mix generation, scenario-component generation, parquet writing, and artifact overview helpers.
-- `inspection_costs_stage2.py`: Scenario aggregation, perfect-information filtering, cost calculations, benefit-per-dollar calculations, and relationship classification.
+- `inspection_costs_stage2.py`: Scenario aggregation, perfect-information filtering, cost calculations, value-per-cost calculations, and relationship classification.
 - `inspection_costs_stage3.py`: Relationship summaries, rule summaries, boxplot data, rendered images, and statistical model reports.
 - `gpu_cluster_bucket_counts.py`: Downloads, filters, and buckets the GPU cluster dataset used to constrain generated mixes.
 - `test_probability.py`: Local probability-check script.
@@ -172,7 +172,7 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION`: Physical-inspection fixed cost range.
 - `PLV_RENTING_COST_PER_TOTAL_CHIP`: PLV renting cost range.
 - `PLV_OWNING_COST_PER_TOTAL_CHIP`: PLV owning cost range.
-- `PLV_DISCOUNT_RATE`: Discount applied to PLV benefits.
+- `PLV_DISCOUNT_RATE`: Discount applied to PLV value.
 
 ## Dependencies
 

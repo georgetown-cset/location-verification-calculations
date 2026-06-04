@@ -19,7 +19,7 @@ PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (9, 48.8)
 PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2590, 6050)
 PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS)  # 12 - 500 landmark servers
-PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV benefits.
+PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV value.
 MIN_SHARE_DIVERTED = 0.1  # Minimum allowed share diverted (K / N) for each component of each scenario.
 
 MIX_STEP_SIZE = 0.1  # Step size for iterating through mixes with different shares of clusters with smuggling.
@@ -140,8 +140,8 @@ COLUMN_NAMES = {
     "value": "Value",
     "scenario_count": "Scenario Count",
     "plv_type": "PLV Type",
-    "benefit_per_dollar_relationship_description": "Benefit Per Dollar Relationship Description",
-    "benefit_per_dollar_scenario_count": "Benefit Per Dollar Scenario Count",
+    "value_per_cost_relationship_description": "Value Per Cost Relationship Description",
+    "value_per_cost_scenario_count": "Value Per Cost Scenario Count",
 }
 SCENARIO_COLUMNS = [
     COLUMN_NAMES["mix_id"],
@@ -169,23 +169,23 @@ SCENARIO_COLUMNS = [
     COLUMN_NAMES["plv_total_diverted_chips_identified"],
 ]
 LONG_SCENARIO_VALUE_VARS = (
-    "Physical - Min Benefit Per Dollar",
-    "Physical - Max Benefit Per Dollar",
-    "PLV Renting - Min Benefit Per Dollar",
-    "PLV Renting - Max Benefit Per Dollar",
-    "PLV Owning - Min Benefit Per Dollar",
-    "PLV Owning - Max Benefit Per Dollar",
+    "Physical - Min Value Per Cost",
+    "Physical - Max Value Per Cost",
+    "PLV Renting - Min Value Per Cost",
+    "PLV Renting - Max Value Per Cost",
+    "PLV Owning - Min Value Per Cost",
+    "PLV Owning - Max Value Per Cost",
 )
-LONG_SCENARIO_BENEFIT_SCENARIOS = {
-    "Physical - Min Benefit Per Dollar": "Physical (Conservative)",
-    "Physical - Max Benefit Per Dollar": "Physical (Optimistic)",
+LONG_SCENARIO_VALUE_SCENARIOS = {
+    "Physical - Min Value Per Cost": "Physical (Conservative)",
+    "Physical - Max Value Per Cost": "Physical (Optimistic)",
 }
 
 
 # Convert an internal scenario metric column name into a label used in long-form outputs.
 def _scenario_variant_label(scenario_type: str, plv_type: str | None = None) -> str:
     if scenario_type.startswith("Physical"):
-        return LONG_SCENARIO_BENEFIT_SCENARIOS[scenario_type]
+        return LONG_SCENARIO_VALUE_SCENARIOS[scenario_type]
     if scenario_type.startswith("PLV"):
         if plv_type is None:
             plv_type = "PLV"
@@ -200,27 +200,27 @@ SMUGGLED_CHIPS_METRIC_FAMILY = "Smuggled Chips"
 SMUGGLED_CHIPS_SCENARIO_GROUP = "Scenario Total"
 SMUGGLED_CHIPS_SCENARIO_VARIANT = "Smuggled Chips"
 SMUGGLED_CHIPS_SCENARIO_TYPE = "Total Smuggled Chips"
-BENEFIT_PER_DOLLAR_RELATIONSHIP_COLUMN = "Physical vs PLV Benefit Per Dollar Relationship"
-BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS = {
-    "a": "Physical max benefit per dollar is less than PLV min benefit per dollar",
-    "b": "Physical max benefit per dollar is within PLV range and Physical min benefit per dollar is below PLV min benefit per dollar",
-    "c": "Physical min and max benefit per dollar are both within PLV range",
-    "d": "Physical min benefit per dollar is within PLV range and Physical max benefit per dollar is above PLV max benefit per dollar",
-    "e": "Physical min benefit per dollar is greater than PLV max benefit per dollar",
-    "f": "Physical benefit per dollar range spans both sides of PLV range",
+VALUE_PER_COST_RELATIONSHIP_COLUMN = "Physical vs PLV Value Per Cost Relationship"
+VALUE_PER_COST_RELATIONSHIP_LABELS = {
+    "a": "Physical max value per cost is less than PLV min value per cost",
+    "b": "Physical max value per cost is within PLV range and Physical min value per cost is below PLV min value per cost",
+    "c": "Physical min and max value per cost are both within PLV range",
+    "d": "Physical min value per cost is within PLV range and Physical max value per cost is above PLV max value per cost",
+    "e": "Physical min value per cost is greater than PLV max value per cost",
+    "f": "Physical value per cost range spans both sides of PLV range",
 }
-RELATIONSHIP_CODE_ORDER = list(BENEFIT_PER_DOLLAR_RELATIONSHIP_LABELS.keys())
+RELATIONSHIP_CODE_ORDER = list(VALUE_PER_COST_RELATIONSHIP_LABELS.keys())
 
 
 # Return relationship-code descriptions customized for the selected PLV cost variant.
 def _plv_relationship_labels(plv_type: str) -> dict[str, str]:
     return {
-        "a": f"Physical max benefit per dollar is less than {plv_type} min benefit per dollar",
-        "b": f"Physical max benefit per dollar is within {plv_type} range and Physical min benefit per dollar is below {plv_type} min benefit per dollar",
-        "c": f"Physical min and max benefit per dollar are both within {plv_type} range",
-        "d": f"Physical min benefit per dollar is within {plv_type} range and Physical max benefit per dollar is above {plv_type} max benefit per dollar",
-        "e": f"Physical min benefit per dollar is greater than {plv_type} max benefit per dollar",
-        "f": f"Physical benefit per dollar range spans both sides of {plv_type} range",
+        "a": f"Physical max value per cost is less than {plv_type} min value per cost",
+        "b": f"Physical max value per cost is within {plv_type} range and Physical min value per cost is below {plv_type} min value per cost",
+        "c": f"Physical min and max value per cost are both within {plv_type} range",
+        "d": f"Physical min value per cost is within {plv_type} range and Physical max value per cost is above {plv_type} max value per cost",
+        "e": f"Physical min value per cost is greater than {plv_type} max value per cost",
+        "f": f"Physical value per cost range spans both sides of {plv_type} range",
     }
 
 
@@ -380,7 +380,7 @@ def run_inspection_costs_workflow(
     )
     from inspection_costs_stage2 import (
         _derive_scenario_summary_from_components,
-        add_cost_benefit_columns,
+        add_cost_value_columns,
         filter_perfect_information_scenarios,
     )
 
@@ -457,12 +457,12 @@ def run_inspection_costs_workflow(
     _overview_parquet_dataset(Path(SCENARIOS_PARQUET_PATH), "Scenario-component parquet dataset")
     _overview_parquet_file(scenarios_combined_path, "Combined scenario-component parquet")
 
-    # Stage 2 collapses component rows to one row per scenario, then adds cost and benefit metrics.
+    # Stage 2 collapses component rows to one row per scenario, then adds cost and value metrics.
     print(f"Aggregating scenario-component rows to scenario level")
     scenario_df = _derive_scenario_summary_from_components(scenario_component_df)
     _overview_dataframe("Scenario-level rows", scenario_df)
-    print("Adding cost and benefit columns")
-    final_df = add_cost_benefit_columns(
+    print("Adding cost and value columns")
+    final_df = add_cost_value_columns(
         scenario_df,
         phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
         phys_inspection_fixed_cost_per_inspection=phys_inspection_fixed_cost_per_inspection,
