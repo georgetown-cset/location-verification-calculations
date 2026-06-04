@@ -176,14 +176,14 @@ def build_mix_data(
 
         # Convert each active proportion into an integer cluster count for that cluster size.
         for cluster_size, proportion in active_components:
-            count = (target_chips * proportion) / cluster_size
-            if count != int(count):
+            count = _integer_cluster_count(target_chips, proportion, cluster_size)
+            if count is None:
                 current_mix = []
                 break
             current_mix.append(
                 {
                     COLUMN_NAMES['cluster_size']: int(cluster_size),
-                    COLUMN_NAMES['number_of_clusters']: int(count),
+                    COLUMN_NAMES['number_of_clusters']: count,
                 }
             )
 
@@ -209,6 +209,19 @@ def build_mix_data(
 
     print(f"build_mix_data: completed with {len(valid_mixes)} valid mixes")
     return valid_mixes
+
+
+# Convert a mix proportion to a cluster count, allowing harmless floating-point representation error.
+def _integer_cluster_count(
+    target_chips: int,
+    proportion: float,
+    cluster_size: int,
+) -> int | None:
+    count = (target_chips * proportion) / cluster_size
+    rounded_count = round(count)
+    if not math.isclose(count, rounded_count, rel_tol=1e-12, abs_tol=1e-9):
+        return None
+    return int(rounded_count)
 
 
 # Check whether a proposed mix includes enough clusters in each constrained size bucket.

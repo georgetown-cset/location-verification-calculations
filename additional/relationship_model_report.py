@@ -2,17 +2,60 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+import sys
 from typing import Iterable, Optional
 
 import numpy as np
 import pandas as pd
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from inspection_costs import (
     COLUMN_NAMES,
-    RELATIONSHIP_MODEL_BASE_FEATURE_COLUMNS,
-    RELATIONSHIP_MODEL_FEATURE_COLUMNS,
 )
 from inspection_costs_stage1 import _iter_parquet_batches
+
+RELATIONSHIP_MODEL_BASE_FEATURE_COLUMNS = [
+    COLUMN_NAMES["total_clusters_in_mix"],
+    COLUMN_NAMES["scenario_component_count"],
+    COLUMN_NAMES["total_tests"],
+    COLUMN_NAMES["total_component_chips"],
+    COLUMN_NAMES["bad_records"],
+    COLUMN_NAMES["share_diverted"],
+    COLUMN_NAMES["physical_inspection_total_diverted_chips_identified"],
+    "PLV Renting - Total Diverted Chips Identified",
+    "PLV Owning - Total Diverted Chips Identified",
+    "Physical Inspection - Min Total Cost",
+    "Physical Inspection - Max Total Cost",
+    "PLV Renting - Min Total Cost",
+    "PLV Owning - Min Total Cost",
+]
+RELATIONSHIP_MODEL_FEATURE_COLUMNS = [
+    "log_total_clusters_in_mix",
+    "scenario_component_count",
+    "log_total_tests",
+    "log_bad_records",
+    "share_diverted",
+    "chips_inspected_per_cluster",
+    "bad_records_per_test",
+    "physical_identified_share",
+    "plv_renting_identified_share",
+    "plv_owning_identified_share",
+    "log_physical_detected",
+    "log_plv_renting_detected",
+    "log_plv_owning_detected",
+    "plv_renting_minus_physical_detected_share",
+    "plv_owning_minus_physical_detected_share",
+    "physical_to_plv_renting_detected_ratio",
+    "physical_to_plv_owning_detected_ratio",
+    "physical_min_cost_per_test",
+    "physical_cost_range_per_test",
+    "plv_renting_cost_per_chip",
+    "plv_owning_cost_per_chip",
+    "plv_cost_spread_per_chip",
+]
 
 
 # Build numeric predictors and interactions for relationship-code modeling.

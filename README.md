@@ -25,6 +25,7 @@ For each valid scenario, the pipeline computes:
 The top-level entry point is `inspection_costs.py`. Running it executes all stages and writes cached parquet data plus CSV, text, and image outputs. Run from the repository root:
 
 ```bash
+python3 -m pip install -r requirements.txt
 python3 inspection_costs.py
 ```
 
@@ -108,9 +109,9 @@ Key outputs:
 ├── inspection_costs_stage1.py
 ├── inspection_costs_stage2.py
 ├── inspection_costs_stage3.py
-├── test/
-│   ├── test_inspection_costs_relationship_model.py
-│   └── test_probability.py
+├── additional/
+│   ├── probability_check.py
+│   └── relationship_model_report.py
 ├── data/
 │   ├── gpu_clusters.csv
 │   ├── saved/
@@ -140,9 +141,9 @@ Key outputs:
 - `inspection_costs_stage1.py`: Detection lookup, cluster-mix generation, scenario-component generation, parquet writing, and artifact overview helpers.
 - `inspection_costs_stage2.py`: Scenario aggregation, perfect-information filtering, cost calculations, value-per-cost calculations, and relationship classification.
 - `inspection_costs_stage3.py`: Relationship summaries, rule summaries, boxplot data, and rendered images.
-- `test/test_inspection_costs_relationship_model.py`: Standalone relationship-code statistical model report generator, kept out of the main pipeline.
+- `additional/relationship_model_report.py`: Standalone relationship-code statistical model report generator, kept out of the main pipeline.
 - `gpu_cluster_bucket_counts.py`: Downloads, filters, and buckets the GPU cluster dataset used to constrain generated mixes.
-- `test/test_probability.py`: Local probability-check script.
+- `additional/probability_check.py`: Local probability-check script.
 
 ### Data Directories
 
@@ -183,3 +184,9 @@ The model uses Python with:
 - `pyarrow`
 
 `pyarrow` is required for parquet read/write support. The GPU cluster bucket script also uses Python's standard-library `urllib` to download the source CSV when `data/gpu_clusters.csv` is not already present.
+
+Install the runtime dependencies from a clean environment with:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
