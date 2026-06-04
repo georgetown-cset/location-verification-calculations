@@ -29,7 +29,7 @@ Features:
   plv_owning_cost_per_chip
   plv_cost_spread_per_chip
 
-Target: Physical vs PLV Renting Benefit Per Dollar Relationship
+Target: Physical vs PLV Renting Value Per Cost Relationship
 Sampled rows: 15,000
 Training rows: 11,250
 Holdout rows: 3,750
@@ -94,7 +94,7 @@ Largest standardized coefficients by relationship code:
 
 ------------------------------------------
 
-Target: Physical vs PLV Owning Benefit Per Dollar Relationship
+Target: Physical vs PLV Owning Value Per Cost Relationship
 Sampled rows: 15,000
 Training rows: 11,250
 Holdout rows: 3,750
