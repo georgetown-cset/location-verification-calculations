@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from pprint import pformat
 from pathlib import Path
 
 import matplotlib
@@ -19,6 +20,7 @@ from inspection_costs import (
     SMUGGLED_CHIPS_SCENARIO_GROUP,
     SMUGGLED_CHIPS_SCENARIO_TYPE,
     SMUGGLED_CHIPS_SCENARIO_VARIANT,
+    WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS,
     _plv_relationship_labels,
     _plv_variant_specs,
     _scenario_variant_label,
@@ -85,6 +87,33 @@ def _build_relationship_rule_frame(
     )
 
     return source_df
+
+
+# Write the assumption constants used by the workflow into a single main-output text file.
+def write_workflow_constants_report(output_text_path: Path) -> None:
+    import inspection_costs as workflow_constants_module
+
+    output_text_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _normalize(value: object) -> object:
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, dict):
+            return {key: _normalize(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            normalized = [_normalize(item) for item in value]
+            return type(value)(normalized)
+        return value
+
+    constants_payload = {
+        name: _normalize(getattr(workflow_constants_module, name))
+        for name in WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS
+    }
+    report_text = "Workflow Constants\n" + "=" * 19 + "\n\n" + pformat(constants_payload, sort_dicts=False, width=100) + "\n"
+    output_text_path.write_text(report_text, encoding="utf-8")
+    print(f"Writing workflow constants report to {output_text_path}")
 
 
 # Summarize observed feature bounds for each relationship code and PLV variant.

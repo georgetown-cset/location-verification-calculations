@@ -93,6 +93,7 @@ Key outputs:
 - `output/all/relationship_summary.csv`
 - `output/all/relationship_boxplot_values.csv`
 - `output/all/relationship_code_rules.csv`
+- `output/inspection_cost_assumptions.txt`
 - `output/all/images/`
 - `output/perfect_information/relationship_summary.csv`
 - `output/perfect_information/relationship_boxplot_values.csv`
@@ -123,6 +124,7 @@ Key outputs:
 │       └── ... parquet fragments by cluster-mix shard
 └── output/
     ├── gpu_cluster_bucket_counts.csv
+    ├── inspection_cost_assumptions.txt
     ├── all/
     │   ├── relationship_summary.csv
     │   ├── relationship_boxplot_values.csv
@@ -141,7 +143,7 @@ Key outputs:
 - `inspection_costs_stage1.py`: Builds detection lookup table, cluster mixes, scenarios, and scenario components.
 - `inspection_costs_stage2.py`: Estimates value of PLV and physical inspections for each scenario component. Aggregates scenario components to the scenario level. Then costs each scenario.
 - `inspection_costs_stage3.py`: Builds three types of outputs. Counts the number of scenarios that have each relationship code (i.e., relationship_summary). Builds box plots that show expected value and value-per-cost by relationship code. Identifies bounds of input variables for scenarios grouped by relationship code (i.e., relationship_code_rules)
-- `additional/relationship_model_report.py`: Standalone relationship-code statistical model report generator, kept out of the main pipeline.
+- `additional/relationship_model_report.py`: Legacy standalone report generator that is no longer wired into the workflow.
 - `gpu_cluster_bucket_counts.py`: Downloads, filters, and buckets EpochAI’s GPU clusters dataset. These calculations are used to exclude unviable cluster mixes.
 - `additional/probability_check.py`: Local probability-check script.
 

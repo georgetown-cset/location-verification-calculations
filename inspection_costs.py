@@ -23,7 +23,7 @@ PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV value.
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
 MIN_SCENARIO_DIVERTED_CHIPS = 10_000  # Minimum number of total diverted chips across a full scenario.
 
-MIX_STEP_SIZE = 7  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
+MIX_STEP_SIZE = 5  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1_000, 10_000, 100_000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 10, 100, 1_000, 10_000, 100_000]  # Diverted chips in a cluster with smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1000]  # Chips inspected per cluster.
@@ -49,6 +49,27 @@ MIX_STEPS = np.linspace(
     num=int(MIX_STEP_SIZE) + 1,
 )
 ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
+WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
+    "TARGET_CHIPS",
+    "SHARE_OF_CLUSTERS_WITH_SMUGGLING",
+    "NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR",
+    "PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP",
+    "PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION",
+    "PLV_RENTING_COST_PER_TOTAL_CHIP",
+    "PLV_OWNING_COST_PER_TOTAL_CHIP",
+    "PLV_DISCOUNT_RATE",
+    "MIN_DIVERTED_CHIPS",
+    "MIN_SCENARIO_DIVERTED_CHIPS",
+    "MIX_STEP_SIZE",
+    "CLUSTER_SIZES",
+    "K_VALS",
+    "CHIPS_INSPECTED_PER_CLUSTER_VALS",
+    "PHYSICAL_INSPECTION_M_VALS",
+    "PLV_M_VALS",
+    "ADDITIONAL_MIN_CLUSTERS_BY_SIZE",
+    "MIX_STEPS",
+    "ALL_M_VALS",
+)
 OUTPUT_DIR = "output"
 ALL_OUTPUT_DIR = f"{OUTPUT_DIR}/all"
 PERFECT_INFORMATION_OUTPUT_DIR = f"{OUTPUT_DIR}/perfect_information"
@@ -62,12 +83,11 @@ SCENARIOS_COSTED_PERFECT_INFORMATION_PARQUET_PATH = f"{DATA_SAVED_DIR}/scenarios
 RELATIONSHIP_SUMMARY_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_boxplot_values.csv"
 RELATIONSHIP_RULES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_rules.csv"
-RELATIONSHIP_MODEL_TEXT_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_model.txt"
+WORKFLOW_CONSTANTS_TEXT_PATH = f"{OUTPUT_DIR}/inspection_cost_assumptions.txt"
 RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{ALL_OUTPUT_DIR}/images"
 PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_summary.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_boxplot_values.csv"
 PERFECT_INFORMATION_RELATIONSHIP_RULES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_rules.csv"
-PERFECT_INFORMATION_RELATIONSHIP_MODEL_TEXT_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_code_model.txt"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUTPUT_DIR}/images"
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
@@ -334,6 +354,7 @@ def run_inspection_costs_workflow(
         add_cost_value_columns,
         filter_perfect_information_scenarios,
     )
+    from inspection_costs_stage3 import write_workflow_constants_report
 
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
@@ -480,6 +501,7 @@ def run_inspection_costs_workflow(
         output_csv_path=perfect_information_relationship_rules_path,
         label="perfect-information",
     )
+    write_workflow_constants_report(Path(WORKFLOW_CONSTANTS_TEXT_PATH))
     elapsed_seconds = time.perf_counter() - start_time
     print(f"Inspection costs workflow complete in {elapsed_seconds:.2f} seconds")
     return {
