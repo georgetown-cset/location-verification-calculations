@@ -11,21 +11,21 @@ import pandas as pd
 
 # Shared constants for all inspection-cost workflow stages live here so the
 # stage modules can import them from a single source of truth.
-TARGET_CHIPS = 3_000_000  # Total number of chips in the scenarios, used to size mixes.
+TARGET_CHIPS = 10_000_000  # Total number of chips in the scenarios, used to size mixes.
 SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25  # Share of clusters in a scenario component assumed to contain smuggling.
 NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
 
 PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP = (9, 48.8)
-PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2590, 6050)
+PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2_590, 6_050)
 PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV value.
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
-MIN_SCENARIO_DIVERTED_CHIPS = 50000  # Minimum allowed total diverted-chip count across a full scenario.
+MIN_SCENARIO_DIVERTED_CHIPS = 10_000  # Minimum number of total diverted chips across a full scenario.
 
-MIX_STEP_SIZE = 9  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
-CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
-K_VALS = [0, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
+MIX_STEP_SIZE = 7  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
+CLUSTER_SIZES = [10, 100, 1_000, 10_000, 100_000]  # Sizes of clusters to consider in mixes.
+K_VALS = [0, 10, 100, 1_000, 10_000, 100_000]  # Diverted chips in a cluster with smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1000]  # Chips inspected per cluster.
 PHYSICAL_INSPECTION_M_VALS = [0.05]  # Failure probability for a physical inspection test.
 PLV_M_VALS = [0.1]  # Failure probability for a PLV test.
@@ -38,8 +38,9 @@ ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
         # (d) deploys (or will deploy) export controlled chips
     # Missing clusters: DayOne Nusajaya
     # Epoch AI estimates that DayOne Nusajaya will have ~179k export controlled chips by Oct 2026.
-    100_000: 1
-    # We assume that there is at least 1x cluster of size 10
+    100_000: 1,
+    # We allow for scenarios with zero size-10 clusters.
+    10: 0
 }
 
 MIX_STEPS = np.linspace(

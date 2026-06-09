@@ -153,16 +153,12 @@ def build_mix_data(
         active_components = [(cluster_size, proportion) for cluster_size, proportion in zip(cluster_sizes, proportions) if proportion > 0]
         current_mix: list[dict[str, int]] = []
 
-        # Round each active share into a cluster count for that cluster size, then validate the total chip sum.
-        for cluster_size, proportion in active_components:
-            count = _integer_cluster_count(target_chips, proportion, cluster_size)
-            if count > 0:
-                current_mix.append(
-                    {
-                        COLUMN_NAMES['cluster_size']: int(cluster_size),
-                        COLUMN_NAMES['number_of_clusters']: count,
-                    }
-                )
+        # Round each active share into cluster counts, then absorb rounding residuals so
+        # fractional step grids can still produce mixes with exactly target_chips.
+        current_mix = _integer_mix_components_for_proportions(
+            target_chips=target_chips,
+            active_components=active_components,
+        )
 
         if not current_mix:
             continue
@@ -193,6 +189,51 @@ def build_mix_data(
 
     print(f"build_mix_data: completed with {len(valid_mixes)} valid mixes")
     return valid_mixes
+
+
+# Convert active mix proportions to integer cluster counts that exactly sum to target_chips.
+def _integer_mix_components_for_proportions(
+    *,
+    target_chips: int,
+    active_components: list[tuple[int, float]],
+) -> list[dict[str, int]]:
+    current_mix: list[dict[str, int]] = []
+    for cluster_size, proportion in active_components:
+        count = _integer_cluster_count(target_chips, proportion, cluster_size)
+        if count > 0:
+            current_mix.append(
+                {
+                    COLUMN_NAMES['cluster_size']: int(cluster_size),
+                    COLUMN_NAMES['number_of_clusters']: count,
+                }
+            )
+
+    if not current_mix:
+        return []
+
+    total_chips_in_mix = sum(
+        int(component[COLUMN_NAMES['cluster_size']]) * int(component[COLUMN_NAMES['number_of_clusters']])
+        for component in current_mix
+    )
+    residual_chips = int(target_chips) - int(total_chips_in_mix)
+    if residual_chips == 0:
+        return current_mix
+
+    # Independent rounding can miss the exact target when MIX_STEP_SIZE does not divide
+    # target_chips cleanly. Adjust one active bucket, preferring the smallest bucket to
+    # keep the proportional distortion as fine-grained as possible.
+    for component in sorted(current_mix, key=lambda item: int(item[COLUMN_NAMES['cluster_size']])):
+        cluster_size = int(component[COLUMN_NAMES['cluster_size']])
+        if residual_chips % cluster_size != 0:
+            continue
+        cluster_delta = residual_chips // cluster_size
+        adjusted_count = int(component[COLUMN_NAMES['number_of_clusters']]) + cluster_delta
+        if adjusted_count <= 0:
+            continue
+        component[COLUMN_NAMES['number_of_clusters']] = int(adjusted_count)
+        return current_mix
+
+    return []
 
 
 # Convert a mix proportion to a rounded cluster count.
