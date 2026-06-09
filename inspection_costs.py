@@ -23,9 +23,9 @@ PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV value.
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
 MIN_SCENARIO_DIVERTED_CHIPS = 50000  # Minimum allowed total diverted-chip count across a full scenario.
 
-MIX_STEP_SIZE = 0.2  # Step size for iterating through mixes with different shares of clusters with smuggling.
+MIX_STEP_SIZE = 9  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
-K_VALS = [0, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
+K_VALS = [0, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1000]  # Chips inspected per cluster.
 PHYSICAL_INSPECTION_M_VALS = [0.05]  # Failure probability for a physical inspection test.
 PLV_M_VALS = [0.1]  # Failure probability for a PLV test.
@@ -39,12 +39,13 @@ ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
     # Missing clusters: DayOne Nusajaya
     # Epoch AI estimates that DayOne Nusajaya will have ~179k export controlled chips by Oct 2026.
     100_000: 1
+    # We assume that there is at least 1x cluster of size 10
 }
 
 MIX_STEPS = np.linspace(
     0.0,
     1.0,
-    int(round(1.0 / MIX_STEP_SIZE)) + 1,
+    num=int(MIX_STEP_SIZE) + 1,
 )
 ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
 OUTPUT_DIR = "output"

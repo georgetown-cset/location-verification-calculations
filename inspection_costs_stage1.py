@@ -153,20 +153,25 @@ def build_mix_data(
         active_components = [(cluster_size, proportion) for cluster_size, proportion in zip(cluster_sizes, proportions) if proportion > 0]
         current_mix: list[dict[str, int]] = []
 
-        # Convert each active proportion into an integer cluster count for that cluster size.
+        # Round each active share into a cluster count for that cluster size, then validate the total chip sum.
         for cluster_size, proportion in active_components:
             count = _integer_cluster_count(target_chips, proportion, cluster_size)
-            if count is None:
-                current_mix = []
-                break
-            current_mix.append(
-                {
-                    COLUMN_NAMES['cluster_size']: int(cluster_size),
-                    COLUMN_NAMES['number_of_clusters']: count,
-                }
-            )
+            if count > 0:
+                current_mix.append(
+                    {
+                        COLUMN_NAMES['cluster_size']: int(cluster_size),
+                        COLUMN_NAMES['number_of_clusters']: count,
+                    }
+                )
 
         if not current_mix:
+            continue
+
+        total_chips_in_mix = sum(
+            int(component[COLUMN_NAMES['cluster_size']]) * int(component[COLUMN_NAMES['number_of_clusters']])
+            for component in current_mix
+        )
+        if total_chips_in_mix != target_chips:
             continue
 
         if not _mix_satisfies_minimum_cluster_counts(current_mix, min_clusters_by_size):
@@ -190,17 +195,14 @@ def build_mix_data(
     return valid_mixes
 
 
-# Convert a mix proportion to a cluster count, allowing harmless floating-point representation error.
+# Convert a mix proportion to a rounded cluster count.
 def _integer_cluster_count(
     target_chips: int,
     proportion: float,
     cluster_size: int,
-) -> int | None:
+) -> int:
     count = (target_chips * proportion) / cluster_size
-    rounded_count = round(count)
-    if not math.isclose(count, rounded_count, rel_tol=1e-12, abs_tol=1e-9):
-        return None
-    return int(rounded_count)
+    return int(round(count))
 
 
 # Check whether a proposed mix includes enough clusters in each constrained size bucket.
