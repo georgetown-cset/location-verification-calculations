@@ -25,6 +25,7 @@ from inspection_costs import (
     SCENARIO_COLUMNS,
     SCENARIOS_PARQUET_PATH,
     SHARE_OF_CLUSTERS_WITH_SMUGGLING,
+    MIN_SCENARIO_DIVERTED_CHIPS,
     TARGET_CHIPS,
 )
 
@@ -348,6 +349,7 @@ def build_scenarios(
     cluster_sizes: Iterable[int],
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
+    min_scenario_diverted_chips: int = MIN_SCENARIO_DIVERTED_CHIPS,
     min_clusters_by_size: Optional[dict[int, int]] = None,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
     plv_m_vals: Iterable[float] = PLV_M_VALS,
@@ -358,6 +360,9 @@ def build_scenarios(
 ) -> pd.DataFrame:
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
+    min_scenario_diverted_chips = int(min_scenario_diverted_chips)
+    if min_scenario_diverted_chips < 0:
+        raise ValueError("build_scenarios: min_scenario_diverted_chips must be non-negative")
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
     print(f"build_scenarios: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
@@ -393,6 +398,7 @@ def build_scenarios(
                 mix_components=mix_components,
                 detection_grouped=detection_grouped,
                 k_options_by_cluster_size=k_options_by_cluster_size,
+                min_scenario_diverted_chips=min_scenario_diverted_chips,
                 physical_m_vals=physical_m_vals,
                 plv_m_vals=plv_m_vals,
                 target_chips=target_chips,
@@ -433,6 +439,7 @@ def build_scenarios(
             mix_components=mix_components,
             detection_grouped=detection_grouped,
             k_options_by_cluster_size=k_options_by_cluster_size,
+            min_scenario_diverted_chips=min_scenario_diverted_chips,
             physical_m_vals=physical_m_vals,
             plv_m_vals=plv_m_vals,
             target_chips=target_chips,
@@ -485,6 +492,7 @@ def _build_mix_records(
     mix_components: list[dict[str, int]],
     detection_grouped: dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]],
     k_options_by_cluster_size: dict[int, list[int]],
+    min_scenario_diverted_chips: int,
     physical_m_vals: Iterable[float],
     plv_m_vals: Iterable[float],
     target_chips: int,
@@ -516,7 +524,7 @@ def _build_mix_records(
         [
             k_val
             for k_val in component[4]
-            if k_val >= MIN_DIVERTED_CHIPS or k_val == component[0]
+            if k_val == 0 or k_val >= MIN_DIVERTED_CHIPS or k_val == component[0]
         ]
         for component in component_data
     ]
@@ -524,6 +532,14 @@ def _build_mix_records(
 
     # A scenario chooses one diverted-chip count for each component in the mix.
     for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
+        scenario_diverted_chips = sum(
+            int(k_val) * int(num_clusters_with_smuggling)
+            for (_cluster_size_comp, _num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val
+            in zip(component_data, k_combo)
+        )
+        if scenario_diverted_chips < min_scenario_diverted_chips:
+            continue
+
         chips_inspected_per_cluster_options_per_component: list[tuple[int, ...]] = []
         for (cluster_size_comp, _num_clusters_comp, _num_clusters_with_smuggling, _weight_pct, _), k_val in zip(component_data, k_combo):
             # Inspected-chip options come from the detection table and are keyed by the selected cluster size and K.

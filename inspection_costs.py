@@ -20,11 +20,12 @@ PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2590, 6050)
 PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV value.
-MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for each component of each scenario.
+MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
+MIN_SCENARIO_DIVERTED_CHIPS = 50000  # Minimum allowed total diverted-chip count across a full scenario.
 
-MIX_STEP_SIZE = 0.1  # Step size for iterating through mixes with different shares of clusters with smuggling.
+MIX_STEP_SIZE = 0.2  # Step size for iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1000, 10000, 100000]  # Sizes of clusters to consider in mixes.
-K_VALS = [0, 1, 10, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
+K_VALS = [0, 100, 1000, 10000, 100000]  # Diverted chips in a cluster with smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1000]  # Chips inspected per cluster.
 PHYSICAL_INSPECTION_M_VALS = [0.05]  # Failure probability for a physical inspection test.
 PLV_M_VALS = [0.1]  # Failure probability for a PLV test.
@@ -297,6 +298,7 @@ def run_inspection_costs_workflow(
     *,
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
     k_vals: Iterable[int] = K_VALS,
+    min_scenario_diverted_chips: int = MIN_SCENARIO_DIVERTED_CHIPS,
     chips_inspected_per_cluster_vals: Iterable[int] = CHIPS_INSPECTED_PER_CLUSTER_VALS,
     extra_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
@@ -382,6 +384,7 @@ def run_inspection_costs_workflow(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
+        min_scenario_diverted_chips=min_scenario_diverted_chips,
         min_clusters_by_size=min_clusters_by_size,
         physical_m_vals=physical_m_vals,
         plv_m_vals=plv_m_vals,
