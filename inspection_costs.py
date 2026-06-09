@@ -11,7 +11,7 @@ import pandas as pd
 
 # Shared constants for all inspection-cost workflow stages live here so the
 # stage modules can import them from a single source of truth.
-TARGET_CHIPS = 10_000_000  # Total number of chips in the scenarios, used to size mixes.
+TARGET_CHIPS = 3_000_000  # Total number of chips in the scenarios, used to size mixes.
 SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25  # Share of clusters in a scenario component assumed to contain smuggling.
 NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR = 2
 
