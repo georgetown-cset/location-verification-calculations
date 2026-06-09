@@ -23,7 +23,7 @@ PLV_DISCOUNT_RATE = 0.5  # Discount rate applied to PLV value.
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
 MIN_SCENARIO_DIVERTED_CHIPS = 10_000  # Minimum number of total diverted chips across a full scenario.
 
-MIX_STEP_SIZE = 5  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
+MIX_STEP_SIZE = 7  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1_000, 10_000, 100_000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 10, 100, 1_000, 10_000, 100_000]  # Diverted chips in a cluster with smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1000]  # Chips inspected per cluster.
@@ -84,6 +84,7 @@ RELATIONSHIP_SUMMARY_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_summary.csv"
 RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_boxplot_values.csv"
 RELATIONSHIP_RULES_CSV_PATH = f"{ALL_OUTPUT_DIR}/relationship_code_rules.csv"
 WORKFLOW_CONSTANTS_TEXT_PATH = f"{OUTPUT_DIR}/inspection_cost_assumptions.txt"
+MIXES_USED_CSV_PATH = f"{OUTPUT_DIR}/mixes_used.csv"
 RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{ALL_OUTPUT_DIR}/images"
 PERFECT_INFORMATION_RELATIONSHIP_SUMMARY_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_summary.csv"
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_VALUES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_DIR}/relationship_boxplot_values.csv"
@@ -348,6 +349,7 @@ def run_inspection_costs_workflow(
         _reset_workflow_artifacts,
         build_detection_lookup_table,
         build_scenarios,
+        write_mix_data_csv,
     )
     from inspection_costs_stage2 import (
         _derive_scenario_summary_from_components,
@@ -403,6 +405,12 @@ def run_inspection_costs_workflow(
     _overview_dataframe("Detection lookup table", detection_lookup_table)
 
     print("Building scenario-component rows")
+    write_mix_data_csv(
+        cluster_sizes=cluster_sizes,
+        target_chips=target_chips,
+        steps=steps,
+        min_clusters_by_size=min_clusters_by_size,
+    )
     scenario_component_df = build_scenarios(
         cluster_sizes=cluster_sizes,
         detection_lookup_table=detection_lookup_table,

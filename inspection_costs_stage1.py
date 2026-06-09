@@ -22,6 +22,7 @@ from inspection_costs import (
     PLV_M_VALS,
     ALL_OUTPUT_DIR,
     PERFECT_INFORMATION_OUTPUT_DIR,
+    MIXES_USED_CSV_PATH,
     SCENARIO_COLUMNS,
     SCENARIOS_PARQUET_PATH,
     SHARE_OF_CLUSTERS_WITH_SMUGGLING,
@@ -189,6 +190,61 @@ def build_mix_data(
 
     print(f"build_mix_data: completed with {len(valid_mixes)} valid mixes")
     return valid_mixes
+
+
+# Write a flat CSV listing every valid mix and its component counts.
+def write_mix_data_csv(
+    cluster_sizes: Iterable[int],
+    *,
+    target_chips: int = TARGET_CHIPS,
+    steps: Optional[Iterable[float]] = None,
+    min_clusters_by_size: Optional[dict[int, int]] = None,
+    output_csv_path: str | Path = MIXES_USED_CSV_PATH,
+) -> pd.DataFrame:
+    cluster_sizes = list(cluster_sizes)
+    output_csv_path = Path(output_csv_path)
+    mix_data = build_mix_data(
+        cluster_sizes=cluster_sizes,
+        target_chips=target_chips,
+        steps=steps,
+        min_clusters_by_size=min_clusters_by_size,
+    )
+
+    rows: list[dict[str, object]] = []
+    for mix_components in mix_data:
+        mix_row: dict[str, object] = {
+            COLUMN_NAMES['mix_id']: mix_components[0][COLUMN_NAMES['mix_id']],
+            COLUMN_NAMES['mix_description']: build_mix_description(mix_components),
+            COLUMN_NAMES['scenario_component_count']: len(mix_components),
+            COLUMN_NAMES['total_clusters_in_mix']: sum(int(component[COLUMN_NAMES['number_of_clusters']]) for component in mix_components),
+            COLUMN_NAMES['total_component_chips']: sum(
+                int(component[COLUMN_NAMES['cluster_size']]) * int(component[COLUMN_NAMES['number_of_clusters']])
+                for component in mix_components
+            ),
+        }
+        for cluster_size in cluster_sizes:
+            mix_row[f"Cluster Size {int(cluster_size)} Count"] = 0
+        for component in mix_components:
+            cluster_size = int(component[COLUMN_NAMES['cluster_size']])
+            mix_row[f"Cluster Size {cluster_size} Count"] = int(component[COLUMN_NAMES['number_of_clusters']])
+        rows.append(mix_row)
+
+    result = pd.DataFrame(rows)
+    if not result.empty:
+        ordered_columns = [
+            COLUMN_NAMES['mix_id'],
+            COLUMN_NAMES['mix_description'],
+            COLUMN_NAMES['scenario_component_count'],
+            COLUMN_NAMES['total_clusters_in_mix'],
+            COLUMN_NAMES['total_component_chips'],
+            *[f"Cluster Size {int(cluster_size)} Count" for cluster_size in cluster_sizes],
+        ]
+        result = result.loc[:, ordered_columns]
+
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(output_csv_path, index=False)
+    print(f"build_mix_data: wrote mix summary CSV to {output_csv_path}")
+    return result
 
 
 # Convert active mix proportions to integer cluster counts that exactly sum to target_chips.

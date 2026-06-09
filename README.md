@@ -94,6 +94,7 @@ Key outputs:
 - `output/all/relationship_boxplot_values.csv`
 - `output/all/relationship_code_rules.csv`
 - `output/inspection_cost_assumptions.txt`
+- `output/mixes_used.csv`
 - `output/all/images/`
 - `output/perfect_information/relationship_summary.csv`
 - `output/perfect_information/relationship_boxplot_values.csv`
@@ -125,6 +126,7 @@ Key outputs:
 └── output/
     ├── gpu_cluster_bucket_counts.csv
     ├── inspection_cost_assumptions.txt
+    ├── mixes_used.csv
     ├── all/
     │   ├── relationship_summary.csv
     │   ├── relationship_boxplot_values.csv
