@@ -151,8 +151,8 @@ def main() -> None:
     )
     _workflow_log("GPU Bucket Counts", f"Total clusters after filters: {len(filtered_df)}", kind="STEP")
     _workflow_log("GPU Bucket Counts", "Bucket summary table follows", kind="INFO")
+    print("[TABLE | GPU Bucket Counts] Bucket summary")
     print(summary_df.to_string(index=False))
-    _workflow_log("GPU Bucket Counts", f"Wrote bucket summary to {OUTPUT_CSV_PATH}", kind="DONE")
 
 
 if __name__ == "__main__":

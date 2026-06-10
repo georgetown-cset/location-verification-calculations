@@ -391,5 +391,5 @@ def write_relationship_code_model_report(
 
     report_text = "\n".join(report_sections).rstrip() + "\n"
     output_text_path.write_text(report_text, encoding="utf-8")
-    print(f"Writing relationship code model report to {output_text_path}")
+    print(f"[STEP  | Relationship Model Report] Writing report to {output_text_path}")
     return report_text

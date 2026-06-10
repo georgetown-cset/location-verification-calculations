@@ -97,7 +97,9 @@ def _workflow_stage(stage: str) -> None:
 
 
 def _workflow_log(stage: str, message: str, *, kind: str = "INFO") -> None:
-    print(f"[{kind:<5} | {stage}] {message}")
+    if kind.upper() in {"DONE", "END", "COMPLETE", "COMPLETED", "FINISH", "FINISHED"}:
+        return
+    print(f"[{kind.upper():<5} | {stage}] {message}")
 
 
 def _format_column_preview(columns: Iterable[object], max_columns: int = 8) -> str:

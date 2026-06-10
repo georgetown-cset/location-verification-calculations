@@ -22,6 +22,8 @@ import inspection_costs
 from inspection_costs import (
     COLUMN_NAMES,
     SCENARIO_COLUMNS,
+    _workflow_log,
+    _workflow_stage,
     load_min_clusters_by_size_from_csv,
     run_inspection_costs_workflow,
 )
@@ -43,6 +45,28 @@ from inspection_costs_stage2 import (
     filter_perfect_information_scenarios,
 )
 from inspection_costs_stage3 import _format_rule_value, _slugify_filename
+
+
+# ---------------------------------------------------------------------------
+# Workflow output tests
+# ---------------------------------------------------------------------------
+
+
+class TestWorkflowOutput:
+    def test_stage_output_uses_pipe_section_format(self, capsys):
+        _workflow_stage("Stage 1 / Detection Lookup")
+
+        assert capsys.readouterr().out == "\n=== Stage 1 / Detection Lookup ===\n"
+
+    def test_log_output_uses_pipe_format(self, capsys):
+        _workflow_log("Workflow", "Starting inspection costs workflow", kind="START")
+
+        assert capsys.readouterr().out == "[START | Workflow] Starting inspection costs workflow\n"
+
+    def test_completion_log_is_suppressed(self, capsys):
+        _workflow_log("Workflow", "Inspection costs workflow complete in 1.23 seconds", kind="DONE")
+
+        assert capsys.readouterr().out == ""
 
 
 # ---------------------------------------------------------------------------
