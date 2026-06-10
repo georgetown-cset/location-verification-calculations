@@ -177,7 +177,7 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION`: Physical-inspection fixed cost range.
 - `PLV_RENTING_COST_PER_TOTAL_CHIP`: PLV renting cost range.
 - `PLV_OWNING_COST_PER_TOTAL_CHIP`: PLV owning cost range.
-- `PLV_DISCOUNT_RATE`: Discount applied to PLV value.
+- `PLV_DISCOUNT_RATE`: Fractional multiplier applied to PLV value.
 - `MIX_STEP_SIZE`: Number of equal steps used to enumerate cluster-mix shares.
 
 ## Dependencies
