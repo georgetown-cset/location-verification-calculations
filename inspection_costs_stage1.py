@@ -512,11 +512,13 @@ def build_scenarios(
     if parquet_path is not None:
         component_dataset_path = parquet_path
         _ensure_scenarios_dataset_path(component_dataset_path)
-        for mix_components in mix_data:
+        for mix_number, mix_components in enumerate(mix_data, start=1):
             # Each mix is generated and written independently to keep peak memory use bounded.
             mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
             mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
                 mix_components=mix_components,
+                mix_number=mix_number,
+                mix_count=len(mix_data),
                 detection_grouped=detection_grouped,
                 k_options_by_cluster_size=k_options_by_cluster_size,
                 min_scenario_diverted_chips=min_scenario_diverted_chips,
@@ -546,9 +548,11 @@ def build_scenarios(
 
     # In-memory mode is primarily useful for tests or small parameter grids.
     scenario_component_records: list[tuple[object, ...]] = []
-    for mix_components in mix_data:
+    for mix_number, mix_components in enumerate(mix_data, start=1):
         mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
             mix_components=mix_components,
+            mix_number=mix_number,
+            mix_count=len(mix_data),
             detection_grouped=detection_grouped,
             k_options_by_cluster_size=k_options_by_cluster_size,
             min_scenario_diverted_chips=min_scenario_diverted_chips,
@@ -598,6 +602,8 @@ def _write_scenario_dataset_to_parquet(
 def _build_mix_records(
     *,
     mix_components: list[dict[str, int]],
+    mix_number: int,
+    mix_count: int,
     detection_grouped: dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]],
     k_options_by_cluster_size: dict[int, list[int]],
     min_scenario_diverted_chips: int,
@@ -720,10 +726,11 @@ def _build_mix_records(
     _workflow_log(
         "Stage 1 / Scenarios",
         (
-            f"{mix_id}: unique K combinations={len(unique_k_combos)}; "
-            f"unique chips_inspected_per_cluster combinations={len(unique_chips_inspected_per_cluster_combos)}; "
-            f"total scenario component rows={len(scenario_component_records)}; "
-            f"total scenarios={scenario_counter}"
+            f"{mix_id} ({mix_number} / {mix_count}):\n"
+            f"  unique K combinations={len(unique_k_combos)}\n"
+            f"  unique chips_inspected_per_cluster combinations={len(unique_chips_inspected_per_cluster_combos)}\n"
+            f"  total scenario component rows={len(scenario_component_records)}\n"
+            f"  total scenarios={scenario_counter}"
         ),
         kind="STEP",
     )
