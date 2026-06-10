@@ -558,8 +558,8 @@ class TestAddCostValueColumns:
             30.0 * inspection_costs.PLV_DISCOUNT_RATE / 500.0
         )
         assert row[COLUMN_NAMES["share_diverted"]] == pytest.approx(50 / 1000)
-        # Physical value-per-cost range lies entirely above the PLV ranges.
-        assert row["Physical vs PLV Renting Value Per Cost Relationship"] == "e"
+        # Physical value-per-cost overlaps the PLV renting range and lies entirely above owning.
+        assert row["Physical vs PLV Renting Value Per Cost Relationship"] == "d"
         assert row["Physical vs PLV Owning Value Per Cost Relationship"] == "e"
 
     def test_does_not_mutate_input(self):
