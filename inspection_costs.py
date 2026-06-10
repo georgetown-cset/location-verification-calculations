@@ -97,9 +97,11 @@ def _workflow_stage(stage: str) -> None:
 
 
 def _workflow_log(stage: str, message: str, *, kind: str = "INFO") -> None:
-    if kind.upper() in {"DONE", "END", "COMPLETE", "COMPLETED", "FINISH", "FINISHED"}:
+    normalized_kind = kind.upper()
+    completion_kinds = {"DONE", "END", "COMPLETE", "COMPLETED", "FINISH", "FINISHED"}
+    if normalized_kind in completion_kinds and stage != "Workflow":
         return
-    print(f"[{kind.upper():<5} | {stage}] {message}")
+    print(f"[{normalized_kind:<5} | {stage}] {message}")
 
 
 def _format_column_preview(columns: Iterable[object], max_columns: int = 8) -> str:

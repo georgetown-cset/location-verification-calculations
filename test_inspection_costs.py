@@ -65,8 +65,13 @@ class TestWorkflowOutput:
 
         assert capsys.readouterr().out == "[START | Workflow] Starting inspection costs workflow\n"
 
-    def test_completion_log_is_suppressed(self, capsys):
+    def test_workflow_completion_log_is_printed(self, capsys):
         _workflow_log("Workflow", "Inspection costs workflow complete in 1.23 seconds", kind="DONE")
+
+        assert capsys.readouterr().out == "[DONE  | Workflow] Inspection costs workflow complete in 1.23 seconds\n"
+
+    def test_non_workflow_completion_log_is_suppressed(self, capsys):
+        _workflow_log("Stage 1 / Detection Lookup", "Complete", kind="DONE")
 
         assert capsys.readouterr().out == ""
 
