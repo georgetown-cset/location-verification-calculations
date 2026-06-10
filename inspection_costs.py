@@ -119,13 +119,18 @@ def _should_log_progress(current: int, *, interval: int, first: int = 3, total: 
     return current % interval == 0
 
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
+_GPU_CLUSTER_BUCKET_COUNTS_READY = False
 
 
 # Regenerate the GPU cluster bucket-count CSV and return the path used by later stages.
 def ensure_gpu_cluster_bucket_counts() -> Path:
+    global _GPU_CLUSTER_BUCKET_COUNTS_READY
     csv_path = GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH
+    if _GPU_CLUSTER_BUCKET_COUNTS_READY and csv_path.exists():
+        return csv_path
     script_path = Path(__file__).with_name("gpu_cluster_bucket_counts.py")
     subprocess.run([sys.executable, str(script_path)], check=True)
+    _GPU_CLUSTER_BUCKET_COUNTS_READY = True
     return csv_path
 
 
@@ -152,7 +157,6 @@ def load_min_clusters_by_size_from_csv(
 
 # Build the cluster-size minimums used to keep generated mixes consistent with known GPU clusters.
 def get_min_clusters_by_size() -> dict[int, int]:
-    ensure_gpu_cluster_bucket_counts()
     return load_min_clusters_by_size_from_csv()
 
 COLUMN_NAMES = {
@@ -560,5 +564,4 @@ def run_inspection_costs_workflow(
 
 
 if __name__ == "__main__":
-    ensure_gpu_cluster_bucket_counts()
     run_inspection_costs_workflow()
