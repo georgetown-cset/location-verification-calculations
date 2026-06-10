@@ -29,7 +29,6 @@ from inspection_costs import (
     MIN_SCENARIO_DIVERTED_CHIPS,
     TARGET_CHIPS,
     _format_column_preview,
-    _should_log_progress,
     _workflow_log,
 )
 
@@ -194,12 +193,6 @@ def build_mix_data(
             component[COLUMN_NAMES['mix_id']] = mix_id
         valid_mixes.append(current_mix)
         seen_mix_ids.add(mix_id)
-        if _should_log_progress(len(valid_mixes), interval=25, first=3):
-            _workflow_log(
-                "Stage 1 / Mix Generation",
-                f"Accepted {mix_id} with {len(current_mix)} components; valid mixes={len(valid_mixes)}",
-                kind="STEP",
-            )
 
     _workflow_log(
         "Stage 1 / Mix Generation",

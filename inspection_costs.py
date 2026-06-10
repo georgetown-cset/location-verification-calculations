@@ -113,13 +113,6 @@ def _format_column_preview(columns: Iterable[object], max_columns: int = 8) -> s
     return preview
 
 
-def _should_log_progress(current: int, *, interval: int, first: int = 3, total: Optional[int] = None) -> bool:
-    if current <= first:
-        return True
-    if total is not None and current >= total:
-        return True
-    return current % interval == 0
-
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
 _GPU_CLUSTER_BUCKET_COUNTS_READY = False
 

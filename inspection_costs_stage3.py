@@ -24,7 +24,6 @@ from inspection_costs import (
     _plv_relationship_labels,
     _plv_variant_specs,
     _scenario_variant_label,
-    _should_log_progress,
     _workflow_log,
 )
 from inspection_costs_stage1 import (
@@ -690,12 +689,6 @@ def _write_relationship_outputs_from_parquet(
         grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
         for group_key, values in grouped:
             grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
-        if _should_log_progress(len(grouped_values), interval=10, first=1):
-            _workflow_log(
-                "Stage 3 / Boxplots",
-                f"Accumulated {len(boxplot_df)} boxplot rows from current batch; grouped series={len(grouped_values)}",
-                kind="STEP",
-            )
 
     relationship_summary_df = _relationship_summary_from_counts(counts_by_plv_type)
     summary_csv_path.parent.mkdir(parents=True, exist_ok=True)
