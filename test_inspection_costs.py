@@ -348,7 +348,7 @@ class TestBuildScenarios:
                 output_parquet_path=None,
             )
 
-    def test_return_dataframe_reuses_generated_records_after_writing_parquet(self, tmp_path, monkeypatch):
+    def test_return_dataframe_reads_generated_parquet_dataset(self, tmp_path, monkeypatch):
         lookup = build_detection_lookup_table(
             cluster_sizes=[10],
             K_vals=[0, 10],
@@ -356,11 +356,15 @@ class TestBuildScenarios:
             m_vals=[0.05, 0.1],
             parquet_path=None,
         )
+        original_read_parquet = pd.read_parquet
+        read_parquet_calls = []
 
-        def fail_read_parquet(*_args, **_kwargs):
-            raise AssertionError("build_scenarios should not read back parquet when records were just generated")
+        def counting_read_parquet(*args, **kwargs):
+            read_parquet_calls.append(args[0])
+            return original_read_parquet(*args, **kwargs)
 
-        monkeypatch.setattr(pd, "read_parquet", fail_read_parquet)
+        monkeypatch.setattr(pd, "read_parquet", counting_read_parquet)
+        output_parquet_path = tmp_path / "scenario_components"
 
         df = build_scenarios(
             cluster_sizes=[10],
@@ -371,10 +375,11 @@ class TestBuildScenarios:
             plv_m_vals=[0.1],
             target_chips=100,
             steps=[0.0, 1.0],
-            output_parquet_path=tmp_path / "scenario_components",
+            output_parquet_path=output_parquet_path,
             return_dataframe=True,
         )
 
+        assert read_parquet_calls == [output_parquet_path]
         assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
 
 

@@ -512,7 +512,6 @@ def build_scenarios(
     if parquet_path is not None:
         component_dataset_path = parquet_path
         _ensure_scenarios_dataset_path(component_dataset_path)
-        scenario_component_records: list[tuple[object, ...]] = []
         for mix_components in mix_data:
             # Each mix is generated and written independently to keep peak memory use bounded.
             mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
@@ -530,8 +529,6 @@ def build_scenarios(
                 mix_id=mix_id,
                 records=mix_scenario_component_records,
             )
-            if return_dataframe:
-                scenario_component_records.extend(mix_scenario_component_records)
             mix_summary_count = mix_scenario_count
             total_scenarios += mix_summary_count
             total_scenario_component_rows += mix_scenario_component_count
@@ -543,7 +540,8 @@ def build_scenarios(
         )
 
         if return_dataframe:
-            return pd.DataFrame.from_records(scenario_component_records, columns=SCENARIO_COLUMNS)
+            # Read the dataset back only when callers need an in-memory frame for downstream processing.
+            return pd.read_parquet(component_dataset_path)
         return pd.DataFrame(columns=SCENARIO_COLUMNS)
 
     # In-memory mode is primarily useful for tests or small parameter grids.
