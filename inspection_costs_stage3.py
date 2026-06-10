@@ -3,13 +3,27 @@ from __future__ import annotations
 from collections import Counter
 from pprint import pformat
 from pathlib import Path
+import warnings
 
-import matplotlib
-matplotlib.use("Agg")
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
-from matplotlib.patches import Patch
+
+try:
+    from pyparsing.warnings import PyparsingDeprecationWarning
+except ImportError:  # pragma: no cover - depends on installed pyparsing version.
+    PyparsingDeprecationWarning = DeprecationWarning
+
+with warnings.catch_warnings():
+    # Matplotlib 3.9.x can emit pyparsing deprecation warnings at import time
+    # with newer pyparsing versions. Keep the filter scoped to that import.
+    warnings.filterwarnings(
+        "ignore",
+        category=PyparsingDeprecationWarning,
+    )
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+    from matplotlib.patches import Patch
 
 from inspection_costs import (
     COLUMN_NAMES,
