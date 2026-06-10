@@ -304,22 +304,19 @@ def _write_relationship_outputs(
     label: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     from inspection_costs_stage1 import _overview_csv_file, _overview_dataframe
-    from inspection_costs_stage3 import _summarize_relationships_from_parquet, _write_relationship_boxplot_values_from_parquet
+    from inspection_costs_stage3 import _write_relationship_outputs_from_parquet
 
     _workflow_log("Stage 3 / Relationships", f"Generating {label} relationship summary at {summary_path}", kind="START")
-    relationship_summary_df = _summarize_relationships_from_parquet(parquet_path)
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    _workflow_log("Stage 3 / Relationships", f"Writing {label} relationship summary CSV to {summary_path}", kind="STEP")
-    relationship_summary_df.to_csv(summary_path, index=False)
+    _workflow_log("Stage 3 / Boxplots", f"Generating {label} relationship boxplot summary at {boxplot_values_path}", kind="START")
+    relationship_summary_df, relationship_boxplot_df = _write_relationship_outputs_from_parquet(
+        parquet_path=parquet_path,
+        summary_csv_path=summary_path,
+        boxplot_csv_path=boxplot_values_path,
+        output_images_dir=boxplot_images_path,
+    )
     _overview_dataframe(f"{label} relationship summary", relationship_summary_df)
     _overview_csv_file(summary_path, f"{label} relationship summary CSV")
 
-    _workflow_log("Stage 3 / Boxplots", f"Generating {label} relationship boxplot summary at {boxplot_values_path}", kind="START")
-    relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
-        parquet_path,
-        boxplot_values_path,
-        boxplot_images_path,
-    )
     _overview_dataframe(f"{label} relationship boxplot values", relationship_boxplot_df)
     _overview_csv_file(boxplot_values_path, f"{label} relationship boxplot values CSV")
     return relationship_summary_df, relationship_boxplot_df

@@ -20,6 +20,7 @@ import pytest
 
 import inspection_costs
 import inspection_costs_stage1
+import inspection_costs_stage3
 from inspection_costs import (
     COLUMN_NAMES,
     SCENARIO_COLUMNS,
@@ -346,6 +347,35 @@ class TestBuildScenarios:
                 min_scenario_diverted_chips=-1,
                 output_parquet_path=None,
             )
+
+    def test_return_dataframe_reuses_generated_records_after_writing_parquet(self, tmp_path, monkeypatch):
+        lookup = build_detection_lookup_table(
+            cluster_sizes=[10],
+            K_vals=[0, 10],
+            chips_inspected_per_cluster_vals=[0, 10],
+            m_vals=[0.05, 0.1],
+            parquet_path=None,
+        )
+
+        def fail_read_parquet(*_args, **_kwargs):
+            raise AssertionError("build_scenarios should not read back parquet when records were just generated")
+
+        monkeypatch.setattr(pd, "read_parquet", fail_read_parquet)
+
+        df = build_scenarios(
+            cluster_sizes=[10],
+            detection_lookup_table=lookup,
+            k_vals=[0, 10],
+            min_scenario_diverted_chips=0,
+            physical_m_vals=[0.05],
+            plv_m_vals=[0.1],
+            target_chips=100,
+            steps=[0.0, 1.0],
+            output_parquet_path=tmp_path / "scenario_components",
+            return_dataframe=True,
+        )
+
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
 
 
 # ---------------------------------------------------------------------------
@@ -683,6 +713,31 @@ class TestEndToEndWorkflow:
         )
 
         assert calls == 1
+
+    def test_workflow_streams_relationship_parquets_once_per_population(self, workflow_sandbox, monkeypatch):
+        calls = 0
+        original_iter_parquet_batches = inspection_costs_stage3._iter_parquet_batches
+
+        def counting_iter_parquet_batches(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            yield from original_iter_parquet_batches(*args, **kwargs)
+
+        monkeypatch.setattr(inspection_costs_stage3, "_iter_parquet_batches", counting_iter_parquet_batches)
+
+        run_inspection_costs_workflow(
+            cluster_sizes=[10, 100],
+            k_vals=[0, 10, 100],
+            min_scenario_diverted_chips=0,
+            chips_inspected_per_cluster_vals=[0, 1, 10],
+            extra_min_clusters_by_size=None,
+            physical_m_vals=[0.05],
+            plv_m_vals=[0.1],
+            target_chips=1000,
+            steps=[0.0, 0.5, 1.0],
+        )
+
+        assert calls == 2
 
     @pytest.fixture(scope="class")
     def workflow_result(self, request, tmp_path_factory):
