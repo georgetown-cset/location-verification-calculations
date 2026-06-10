@@ -386,29 +386,6 @@ def _relationship_summary_from_counts(
     return result.sort_values([COLUMN_NAMES['plv_type'], COLUMN_NAMES['relationship_code']]).reset_index(drop=True)
 
 
-# Count relationship-code frequencies from a cached costed scenario parquet file.
-def _summarize_relationships_from_parquet(
-    parquet_path: Path,
-    batch_size: int = 65_536,
-) -> pd.DataFrame:
-    _workflow_log("Stage 3 / Relationships", f"Summarizing relationship counts from cached costed parquet: {parquet_path}", kind="START")
-    counts_by_plv_type: dict[str, Counter[str]] = {}
-    for variant in _plv_variant_specs():
-        plv_type = str(variant["plv_type"])
-        vpc_relationship_column = f"Physical vs {plv_type} Value Per Cost Relationship"
-        value_per_cost_counts: Counter[str] = Counter()
-
-        for batch_df in _iter_parquet_batches(
-            parquet_path,
-            columns=[vpc_relationship_column],
-            batch_size=batch_size,
-        ):
-            value_per_cost_counts.update(batch_df[vpc_relationship_column].astype(str).tolist())
-        counts_by_plv_type[plv_type] = value_per_cost_counts
-
-    return _relationship_summary_from_counts(counts_by_plv_type)
-
-
 # Return tidy raw rows for box plots split by relationship category, PLV variant, and metric family.
 def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFrame:
     """Return tidy raw rows for box plots split by relationship category, PLV variant, and metric family."""
@@ -668,91 +645,6 @@ def _render_relationship_boxplot_images(
         _workflow_log("Stage 3 / Boxplots", f"Wrote relationship boxplot image to {output_path}", kind="STEP")
 
     return saved_paths
-
-
-# Stream costed scenarios into boxplot summaries and image files without loading all rows at once.
-def _write_relationship_boxplot_values_from_parquet(
-    parquet_path: Path,
-    output_csv_path: Path,
-    output_images_dir: Path,
-    batch_size: int = 65_536,
-) -> pd.DataFrame:
-    _workflow_log("Stage 3 / Boxplots", f"Building relationship boxplot summary from cached costed parquet: {parquet_path}", kind="START")
-    columns = [
-        COLUMN_NAMES['mix_id'],
-        COLUMN_NAMES['scenario_id'],
-        "Physical vs PLV Renting Value Per Cost Relationship",
-        "Physical vs PLV Owning Value Per Cost Relationship",
-        COLUMN_NAMES['bad_records'],
-        *LONG_SCENARIO_VALUE_VARS,
-    ]
-    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
-    grouped_values: dict[tuple[object, ...], list[float]] = {}
-
-    # The group key matches the eventual summary CSV dimensions and plot series.
-    group_columns = [
-        COLUMN_NAMES['metric_family'],
-        COLUMN_NAMES['plv_type'],
-        COLUMN_NAMES['relationship_code'],
-        COLUMN_NAMES['relationship_description'],
-        COLUMN_NAMES['scenario_group'],
-        COLUMN_NAMES['scenario_variant'],
-        COLUMN_NAMES['scenario_type'],
-    ]
-    for batch_df in _iter_parquet_batches(parquet_path, columns=columns, batch_size=batch_size):
-        boxplot_df = _build_relationship_boxplot_dataframe(batch_df)
-        if boxplot_df.empty:
-            continue
-        grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
-
-        # Accumulate raw values by group so quantiles can be computed after all batches are read.
-        for group_key, values in grouped:
-            grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
-        if _should_log_progress(len(grouped_values), interval=10, first=1):
-            _workflow_log(
-                "Stage 3 / Boxplots",
-                f"Accumulated {len(boxplot_df)} boxplot rows from current batch; grouped series={len(grouped_values)}",
-                kind="STEP",
-            )
-
-    if not grouped_values:
-        empty_summary = _summarize_relationship_boxplot_dataframe(
-            pd.DataFrame(columns=[*group_columns, COLUMN_NAMES['value']])
-        )
-        empty_summary.to_csv(output_csv_path, index=False)
-        _workflow_log("Stage 3 / Boxplots", f"Wrote empty relationship boxplot summary to {output_csv_path}", kind="DONE")
-        return empty_summary
-
-    summary_rows = []
-
-    # Convert accumulated raw values into the distribution statistics used by the CSV and plots.
-    for group_key, values in grouped_values.items():
-        value_series = pd.Series(values, dtype="float64")
-        summary_rows.append(
-            {
-                COLUMN_NAMES['metric_family']: group_key[0],
-                COLUMN_NAMES['plv_type']: group_key[1],
-                COLUMN_NAMES['relationship_code']: group_key[2],
-                COLUMN_NAMES['relationship_description']: group_key[3],
-                COLUMN_NAMES['scenario_group']: group_key[4],
-                COLUMN_NAMES['scenario_variant']: group_key[5],
-                COLUMN_NAMES['scenario_type']: group_key[6],
-                COLUMN_NAMES['scenario_count']: int(value_series.count()),
-                "Min": float(value_series.min()),
-                "Q1": float(value_series.quantile(0.25)),
-                "Median": float(value_series.median()),
-                "Q3": float(value_series.quantile(0.75)),
-                "Max": float(value_series.max()),
-                "Mean": float(value_series.mean()),
-            }
-        )
-    summary_df = pd.DataFrame(summary_rows)
-    summary_df[COLUMN_NAMES['plv_type']] = pd.Categorical(summary_df[COLUMN_NAMES['plv_type']], categories=PLV_VARIANT_ORDER, ordered=True)
-    summary_df = summary_df.sort_values(group_columns).reset_index(drop=True)
-    summary_df.to_csv(output_csv_path, index=False)
-    _workflow_log("Stage 3 / Boxplots", f"Wrote relationship boxplot summary CSV to {output_csv_path}", kind="DONE")
-    _render_relationship_boxplot_images(grouped_values, output_images_dir)
-    return summary_df
 
 
 def _write_relationship_outputs_from_parquet(
