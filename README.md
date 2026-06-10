@@ -111,6 +111,7 @@ Key outputs:
 ├── inspection_costs_stage1.py
 ├── inspection_costs_stage2.py
 ├── inspection_costs_stage3.py
+├── test_inspection_costs.py
 ├── additional/
 │   ├── probability_check.py
 │   └── relationship_model_report.py
