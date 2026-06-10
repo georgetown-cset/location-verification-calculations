@@ -216,16 +216,18 @@ def write_mix_data_csv(
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
     min_clusters_by_size: Optional[dict[int, int]] = None,
+    mix_data: Optional[list[list[dict[str, int]]]] = None,
     output_csv_path: str | Path = MIXES_USED_CSV_PATH,
 ) -> pd.DataFrame:
     cluster_sizes = list(cluster_sizes)
     output_csv_path = Path(output_csv_path)
-    mix_data = build_mix_data(
-        cluster_sizes=cluster_sizes,
-        target_chips=target_chips,
-        steps=steps,
-        min_clusters_by_size=min_clusters_by_size,
-    )
+    if mix_data is None:
+        mix_data = build_mix_data(
+            cluster_sizes=cluster_sizes,
+            target_chips=target_chips,
+            steps=steps,
+            min_clusters_by_size=min_clusters_by_size,
+        )
 
     rows: list[dict[str, object]] = []
     for mix_components in mix_data:
@@ -471,6 +473,7 @@ def build_scenarios(
     plv_m_vals: Iterable[float] = PLV_M_VALS,
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
+    mix_data: Optional[list[list[dict[str, int]]]] = None,
     output_parquet_path: Optional[str | Path] = SCENARIOS_PARQUET_PATH,
     return_dataframe: Optional[bool] = None,
 ) -> pd.DataFrame:
@@ -486,15 +489,16 @@ def build_scenarios(
         f"Starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values",
         kind="START",
     )
-    mix_data = build_mix_data(
-        cluster_sizes=cluster_sizes,
-        target_chips=target_chips,
-        steps=steps,
-        min_clusters_by_size=min_clusters_by_size,
-    )
+    if mix_data is None:
+        mix_data = build_mix_data(
+            cluster_sizes=cluster_sizes,
+            target_chips=target_chips,
+            steps=steps,
+            min_clusters_by_size=min_clusters_by_size,
+        )
     _workflow_log(
         "Stage 1 / Scenarios",
-        f"Received {len(mix_data)} mixes from build_mix_data",
+        f"Received {len(mix_data)} mixes",
         kind="STEP",
     )
     detection_grouped = _group_detection_lookup(detection_lookup_table)

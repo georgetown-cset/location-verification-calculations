@@ -380,6 +380,7 @@ def run_inspection_costs_workflow(
         _overview_parquet_file,
         _reset_workflow_artifacts,
         build_detection_lookup_table,
+        build_mix_data,
         build_scenarios,
         write_mix_data_csv,
     )
@@ -440,11 +441,18 @@ def run_inspection_costs_workflow(
 
     _workflow_stage("Stage 1 / Scenario Components")
     _workflow_log("Stage 1 / Scenario Components", "Building scenario-component rows", kind="START")
+    mix_data = build_mix_data(
+        cluster_sizes=cluster_sizes,
+        target_chips=target_chips,
+        steps=steps,
+        min_clusters_by_size=min_clusters_by_size,
+    )
     write_mix_data_csv(
         cluster_sizes=cluster_sizes,
         target_chips=target_chips,
         steps=steps,
         min_clusters_by_size=min_clusters_by_size,
+        mix_data=mix_data,
     )
     scenario_component_df = build_scenarios(
         cluster_sizes=cluster_sizes,
@@ -456,6 +464,7 @@ def run_inspection_costs_workflow(
         plv_m_vals=plv_m_vals,
         target_chips=target_chips,
         steps=steps,
+        mix_data=mix_data,
         return_dataframe=True,
     )
     _overview_dataframe("Scenario-component rows", scenario_component_df)

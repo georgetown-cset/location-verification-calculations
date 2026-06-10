@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 import inspection_costs
+import inspection_costs_stage1
 from inspection_costs import (
     COLUMN_NAMES,
     SCENARIO_COLUMNS,
@@ -658,6 +659,31 @@ def workflow_sandbox(tmp_path, monkeypatch):
 
 
 class TestEndToEndWorkflow:
+    def test_workflow_generates_mixes_once(self, workflow_sandbox, monkeypatch):
+        calls = 0
+        original_build_mix_data = inspection_costs_stage1.build_mix_data
+
+        def counting_build_mix_data(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original_build_mix_data(*args, **kwargs)
+
+        monkeypatch.setattr(inspection_costs_stage1, "build_mix_data", counting_build_mix_data)
+
+        run_inspection_costs_workflow(
+            cluster_sizes=[10, 100],
+            k_vals=[0, 10, 100],
+            min_scenario_diverted_chips=0,
+            chips_inspected_per_cluster_vals=[0, 1, 10],
+            extra_min_clusters_by_size=None,
+            physical_m_vals=[0.05],
+            plv_m_vals=[0.1],
+            target_chips=1000,
+            steps=[0.0, 0.5, 1.0],
+        )
+
+        assert calls == 1
+
     @pytest.fixture(scope="class")
     def workflow_result(self, request, tmp_path_factory):
         """Run the full workflow once on a tiny grid and share it across tests."""
