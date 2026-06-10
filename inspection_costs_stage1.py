@@ -527,26 +527,14 @@ def build_scenarios(
                 plv_m_vals=plv_m_vals,
                 target_chips=target_chips,
             )
-            mix_component_fragments = _write_scenario_dataset_to_parquet(
+            _write_scenario_dataset_to_parquet(
                 dataset_path=component_dataset_path,
                 mix_id=mix_id,
                 records=mix_scenario_component_records,
             )
             mix_summary_count = mix_scenario_count
-            mix_fragment_count = len(mix_component_fragments)
             total_scenarios += mix_summary_count
             total_scenario_component_rows += mix_scenario_component_count
-            if _should_log_progress(total_scenarios, interval=25, first=3):
-                _workflow_log(
-                    "Stage 1 / Scenarios",
-                    (
-                        f"Wrote {mix_id}; scenario rows added={mix_scenario_count}, "
-                        f"scenario-component rows added={mix_scenario_component_count}, "
-                        f"fragment files written={mix_fragment_count}; "
-                        f"totals now scenario rows={total_scenarios}, scenario-component rows={total_scenario_component_rows}"
-                    ),
-                    kind="STEP",
-                )
 
         _workflow_log(
             "Stage 1 / Scenarios",
@@ -575,17 +563,6 @@ def build_scenarios(
             scenario_component_records.extend(mix_scenario_component_records)
         total_scenarios += mix_scenario_count
         total_scenario_component_rows += mix_scenario_component_count
-        if _should_log_progress(total_scenarios, interval=25, first=3):
-            _workflow_log(
-                "Stage 1 / Scenarios",
-                (
-                    f"Finished {mix_components[0][COLUMN_NAMES['mix_id']]}; "
-                    f"scenario-component rows added={mix_scenario_component_count}, "
-                    f"totals now scenario rows={total_scenarios}, "
-                    f"scenario-component rows={total_scenario_component_rows}"
-                ),
-                kind="STEP",
-            )
 
     _workflow_log(
         "Stage 1 / Scenarios",
@@ -638,12 +615,6 @@ def _build_mix_records(
     scenario_component_count = len(mix_components)
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
-    _workflow_log(
-        "Stage 1 / Scenarios",
-        f"Processing {mix_id} ({mix_description}) with {len(mix_components)} components and {total_clusters_in_mix} total clusters",
-        kind="STEP",
-    )
-
     # Component metadata packages cluster size, cluster count, smuggling count, weight, and valid K options.
     component_data = [
         (
@@ -664,6 +635,8 @@ def _build_mix_records(
         for component in component_data
     ]
     scenario_counter = 0
+    unique_k_combos: set[tuple[int, ...]] = set()
+    unique_chips_inspected_per_cluster_combos: set[tuple[int, ...]] = set()
 
     # A scenario chooses one diverted-chip count for each component in the mix.
     for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
@@ -674,6 +647,7 @@ def _build_mix_records(
         )
         if scenario_diverted_chips < min_scenario_diverted_chips:
             continue
+        k_combo = tuple(int(k_val) for k_val in k_combo)
 
         chips_inspected_per_cluster_options_per_component: list[tuple[int, ...]] = []
         for (cluster_size_comp, _num_clusters_comp, _num_clusters_with_smuggling, _weight_pct, _), k_val in zip(component_data, k_combo):
@@ -683,8 +657,11 @@ def _build_mix_records(
                 break
             chips_inspected_per_cluster_options_per_component.append(tuple(sorted(chips_inspected_per_cluster_options)))
         else:
+            unique_k_combos.add(k_combo)
             # Once every component has valid K and inspected-chip options, cross product them into concrete scenarios.
             for chips_inspected_per_cluster_combo_count, chips_inspected_per_cluster_combo in enumerate(itertools.product(*chips_inspected_per_cluster_options_per_component), start=1):
+                chips_inspected_per_cluster_combo = tuple(int(value) for value in chips_inspected_per_cluster_combo)
+                unique_chips_inspected_per_cluster_combos.add(chips_inspected_per_cluster_combo)
                 for physical_m_val in physical_m_vals:
                     for plv_m_val in plv_m_vals:
                         scenario_id = (
@@ -743,28 +720,16 @@ def _build_mix_records(
                         scenario_counter += 1
                         scenario_component_records.extend(flat_rows)
 
-                if _should_log_progress(chips_inspected_per_cluster_combo_count, interval=10_000, first=1):
-                    _workflow_log(
-                        "Stage 1 / Scenarios",
-                        (
-                            f"{mix_id}: processed {combo_count} K combinations and "
-                            f"{chips_inspected_per_cluster_combo_count} chips-inspected-per-cluster combinations; "
-                            f"scenario rows so far for mix={scenario_counter}, "
-                            f"scenario-component rows so far for mix={len(scenario_component_records)}"
-                        ),
-                        kind="STEP",
-                    )
-
-            if _should_log_progress(combo_count, interval=10_000, first=1):
-                _workflow_log(
-                    "Stage 1 / Scenarios",
-                    (
-                        f"{mix_id}: processed {combo_count} K combinations; "
-                        f"scenario rows so far for mix={scenario_counter}, "
-                        f"scenario-component rows so far for mix={len(scenario_component_records)}"
-                    ),
-                    kind="STEP",
-                )
+    _workflow_log(
+        "Stage 1 / Scenarios",
+        (
+            f"{mix_id}: unique K combinations={len(unique_k_combos)}; "
+            f"unique chips_inspected_per_cluster combinations={len(unique_chips_inspected_per_cluster_combos)}; "
+            f"total scenario component rows={len(scenario_component_records)}; "
+            f"total scenarios={scenario_counter}"
+        ),
+        kind="STEP",
+    )
 
     return scenario_component_records, scenario_counter, len(scenario_component_records)
 
