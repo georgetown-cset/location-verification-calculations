@@ -188,6 +188,7 @@ The model uses Python with:
 - `pandas`
 - `matplotlib`
 - `pyarrow`
+- `pytest`
 
 `pyarrow` is required for parquet read/write support. The GPU cluster bucket script also uses Python's standard-library `urllib` to download the source CSV when `data/gpu_clusters.csv` is not already present.
 
@@ -195,4 +196,12 @@ Install the runtime dependencies from a clean environment with:
 
 ```bash
 python3 -m pip install -r requirements.txt
+```
+
+## Running Tests
+
+The test suite covers the probability calculations, scenario generation helpers, cost/value calculations, relationship classification, and a small end-to-end workflow run. Install the dependencies first, then run the tests from the repository root:
+
+```bash
+python3 -m pytest -q
 ```
