@@ -28,6 +28,9 @@ from inspection_costs import (
     SHARE_OF_CLUSTERS_WITH_SMUGGLING,
     MIN_SCENARIO_DIVERTED_CHIPS,
     TARGET_CHIPS,
+    _format_column_preview,
+    _should_log_progress,
+    _workflow_log,
 )
 
 
@@ -116,7 +119,7 @@ def build_detection_lookup_table(
     result = pd.DataFrame(rows)
     if parquet_path is not None:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"build_detection_lookup_table: writing table to {parquet_path}")
+        _workflow_log("Stage 1 / Detection Lookup", f"Writing detection lookup table to {parquet_path}", kind="STEP")
         result.to_parquet(parquet_path, index=False, compression=PARQUET_COMPRESSION)
     return result
 
@@ -145,9 +148,17 @@ def build_mix_data(
     negative_minimums = {cluster_size: min_count for cluster_size, min_count in min_clusters_by_size.items() if min_count < 0}
     if negative_minimums:
         raise ValueError(f"build_mix_data: minimum cluster counts must be non-negative: {negative_minimums}")
-    print(f"build_mix_data: generating mixes for {len(cluster_sizes)} cluster sizes and target {target_chips} chips")
+    _workflow_log(
+        "Stage 1 / Mix Generation",
+        f"Generating mixes for {len(cluster_sizes)} cluster sizes and target {target_chips} chips",
+        kind="START",
+    )
     if min_clusters_by_size:
-        print(f"build_mix_data: applying minimum cluster constraints {min_clusters_by_size}")
+        _workflow_log(
+            "Stage 1 / Mix Generation",
+            f"Applying minimum cluster constraints {min_clusters_by_size}",
+            kind="STEP",
+        )
     valid_mixes: list[list[dict[str, int]]] = []
     seen_mix_ids: set[str] = set()
     for _mix_index, proportions in _iter_valid_mix_proportions(steps, len(cluster_sizes)):
@@ -183,12 +194,18 @@ def build_mix_data(
             component[COLUMN_NAMES['mix_id']] = mix_id
         valid_mixes.append(current_mix)
         seen_mix_ids.add(mix_id)
-        print(
-            f"build_mix_data: accepted {mix_id} with {len(current_mix)} components; "
-            f"total valid mixes={len(valid_mixes)}"
-        )
+        if _should_log_progress(len(valid_mixes), interval=25, first=3):
+            _workflow_log(
+                "Stage 1 / Mix Generation",
+                f"Accepted {mix_id} with {len(current_mix)} components; valid mixes={len(valid_mixes)}",
+                kind="STEP",
+            )
 
-    print(f"build_mix_data: completed with {len(valid_mixes)} valid mixes")
+    _workflow_log(
+        "Stage 1 / Mix Generation",
+        f"Completed with {len(valid_mixes)} valid mixes",
+        kind="DONE",
+    )
     return valid_mixes
 
 
@@ -243,7 +260,7 @@ def write_mix_data_csv(
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(output_csv_path, index=False)
-    print(f"build_mix_data: wrote mix summary CSV to {output_csv_path}")
+    _workflow_log("Stage 1 / Mix Generation", f"Wrote mix summary CSV to {output_csv_path}", kind="STEP")
     return result
 
 
@@ -464,14 +481,22 @@ def build_scenarios(
         raise ValueError("build_scenarios: min_scenario_diverted_chips must be non-negative")
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
-    print(f"build_scenarios: starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values")
+    _workflow_log(
+        "Stage 1 / Scenarios",
+        f"Starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values",
+        kind="START",
+    )
     mix_data = build_mix_data(
         cluster_sizes=cluster_sizes,
         target_chips=target_chips,
         steps=steps,
         min_clusters_by_size=min_clusters_by_size,
     )
-    print(f"build_scenarios: received {len(mix_data)} mixes from build_mix_data")
+    _workflow_log(
+        "Stage 1 / Scenarios",
+        f"Received {len(mix_data)} mixes from build_mix_data",
+        kind="STEP",
+    )
     detection_grouped = _group_detection_lookup(detection_lookup_table)
 
     # Pre-filter K values by cluster size so later Cartesian products never include impossible diversions.
@@ -509,21 +534,24 @@ def build_scenarios(
             )
             mix_summary_count = mix_scenario_count
             mix_fragment_count = len(mix_component_fragments)
-            print(
-                f"build_scenarios: wrote {mix_id}; "
-                f"scenario rows added={mix_scenario_count}, scenario-component rows added={mix_scenario_component_count}, "
-                f"fragment files written={mix_fragment_count}"
-            )
             total_scenarios += mix_summary_count
             total_scenario_component_rows += mix_scenario_component_count
-            print(
-                f"build_scenarios: finished {mix_id}; total scenario rows={total_scenarios}, "
-                f"total scenario-component rows={total_scenario_component_rows}"
-            )
+            if _should_log_progress(total_scenarios, interval=25, first=3):
+                _workflow_log(
+                    "Stage 1 / Scenarios",
+                    (
+                        f"Wrote {mix_id}; scenario rows added={mix_scenario_count}, "
+                        f"scenario-component rows added={mix_scenario_component_count}, "
+                        f"fragment files written={mix_fragment_count}; "
+                        f"totals now scenario rows={total_scenarios}, scenario-component rows={total_scenario_component_rows}"
+                    ),
+                    kind="STEP",
+                )
 
-        print(
-            f"build_scenarios: completed with {total_scenarios} new scenario rows "
-            f"and {total_scenario_component_rows} new scenario-component rows"
+        _workflow_log(
+            "Stage 1 / Scenarios",
+            f"Completed with {total_scenarios} new scenario rows and {total_scenario_component_rows} new scenario-component rows",
+            kind="DONE",
         )
 
         if return_dataframe:
@@ -547,15 +575,22 @@ def build_scenarios(
             scenario_component_records.extend(mix_scenario_component_records)
         total_scenarios += mix_scenario_count
         total_scenario_component_rows += mix_scenario_component_count
-        print(
-            f"build_scenarios: finished {mix_components[0][COLUMN_NAMES['mix_id']]}; "
-            f"scenario-component rows added={mix_scenario_component_count}, "
-            f"total new scenario rows={total_scenarios}, total new scenario-component rows={total_scenario_component_rows}"
-        )
+        if _should_log_progress(total_scenarios, interval=25, first=3):
+            _workflow_log(
+                "Stage 1 / Scenarios",
+                (
+                    f"Finished {mix_components[0][COLUMN_NAMES['mix_id']]}; "
+                    f"scenario-component rows added={mix_scenario_component_count}, "
+                    f"totals now scenario rows={total_scenarios}, "
+                    f"scenario-component rows={total_scenario_component_rows}"
+                ),
+                kind="STEP",
+            )
 
-    print(
-        f"build_scenarios: completed with {total_scenarios} new scenario rows "
-        f"and {total_scenario_component_rows} new scenario-component rows"
+    _workflow_log(
+        "Stage 1 / Scenarios",
+        f"Completed with {total_scenarios} new scenario rows and {total_scenario_component_rows} new scenario-component rows",
+        kind="DONE",
     )
 
     if return_dataframe:
@@ -603,9 +638,10 @@ def _build_mix_records(
     scenario_component_count = len(mix_components)
     physical_m_vals = list(physical_m_vals)
     plv_m_vals = list(plv_m_vals)
-    print(
-        f"build_scenarios: processing {mix_id} ({mix_description}) "
-        f"with {len(mix_components)} components and {total_clusters_in_mix} total clusters"
+    _workflow_log(
+        "Stage 1 / Scenarios",
+        f"Processing {mix_id} ({mix_description}) with {len(mix_components)} components and {total_clusters_in_mix} total clusters",
+        kind="STEP",
     )
 
     # Component metadata packages cluster size, cluster count, smuggling count, weight, and valid K options.
@@ -707,18 +743,27 @@ def _build_mix_records(
                         scenario_counter += 1
                         scenario_component_records.extend(flat_rows)
 
-                if chips_inspected_per_cluster_combo_count % 1000 == 0:
-                    print(
-                        f"build_scenarios: {mix_id} processed {combo_count} K combinations and "
-                        f"{chips_inspected_per_cluster_combo_count} chips-inspected-per-cluster combinations; scenario rows so far for mix={scenario_counter}, "
-                        f"scenario-component rows so far for mix={len(scenario_component_records)}"
+                if _should_log_progress(chips_inspected_per_cluster_combo_count, interval=10_000, first=1):
+                    _workflow_log(
+                        "Stage 1 / Scenarios",
+                        (
+                            f"{mix_id}: processed {combo_count} K combinations and "
+                            f"{chips_inspected_per_cluster_combo_count} chips-inspected-per-cluster combinations; "
+                            f"scenario rows so far for mix={scenario_counter}, "
+                            f"scenario-component rows so far for mix={len(scenario_component_records)}"
+                        ),
+                        kind="STEP",
                     )
 
-            if combo_count % 1000 == 0:
-                print(
-                    f"build_scenarios: {mix_id} processed {combo_count} K combinations; "
-                    f"scenario rows so far for mix={scenario_counter}, "
-                    f"scenario-component rows so far for mix={len(scenario_component_records)}"
+            if _should_log_progress(combo_count, interval=10_000, first=1):
+                _workflow_log(
+                    "Stage 1 / Scenarios",
+                    (
+                        f"{mix_id}: processed {combo_count} K combinations; "
+                        f"scenario rows so far for mix={scenario_counter}, "
+                        f"scenario-component rows so far for mix={len(scenario_component_records)}"
+                    ),
+                    kind="STEP",
                 )
 
     return scenario_component_records, scenario_counter, len(scenario_component_records)
@@ -813,60 +858,56 @@ def _iter_parquet_batches(
 
 # Print a compact row, column, and preview summary for a DataFrame.
 def _overview_dataframe(name: str, df: pd.DataFrame, max_rows: int = 5) -> None:
-    print(f"\n{name}")
-    print(f"Rows: {len(df):,}; columns: {len(df.columns):,}")
+    _workflow_log(name, f"rows={len(df):,}; columns={len(df.columns):,}", kind="INFO")
+    _workflow_log(name, f"Column sample: {_format_column_preview(df.columns, max_rows)}", kind="INFO")
     if df.empty:
-        print("(empty)")
-    else:
-        print(df.head(max_rows))
+        _workflow_log(name, "DataFrame is empty", kind="INFO")
 
 
 # Print row, column, and preview details for a single parquet file.
 def _overview_parquet_file(path: Path, name: str, max_rows: int = 5) -> None:
-    print(f"\n{name}: {path}")
+    _workflow_log(name, f"Inspecting parquet file at {path}", kind="INFO")
     pq, _pa = _import_pyarrow_parquet()
     parquet_file = pq.ParquetFile(path)
-    print(f"Rows: {parquet_file.metadata.num_rows:,}; columns: {len(parquet_file.schema.names):,}")
-    for batch in parquet_file.iter_batches(batch_size=max_rows):
-        preview_df = batch.to_pandas()
-        print(preview_df.head(max_rows) if not preview_df.empty else "(empty)")
-        break
+    _workflow_log(
+        name,
+        f"rows={parquet_file.metadata.num_rows:,}; columns={len(parquet_file.schema.names):,}; column sample: {_format_column_preview(parquet_file.schema.names, max_rows)}",
+        kind="INFO",
+    )
 
 
 # Print aggregate row, file, column, and preview details for a parquet dataset directory.
 def _overview_parquet_dataset(path: Path, name: str, max_rows: int = 5) -> None:
-    print(f"\n{name}: {path}")
+    _workflow_log(name, f"Inspecting parquet dataset at {path}", kind="INFO")
     parquet_paths = sorted(path.rglob("*.parquet")) if path.is_dir() else [path]
     if not parquet_paths:
-        print("No parquet files")
+        _workflow_log(name, "No parquet files", kind="INFO")
         return
 
     pq, _pa = _import_pyarrow_parquet()
     row_count = 0
     column_count = 0
-    preview_df = pd.DataFrame()
+    column_names: list[str] = []
     for parquet_path in parquet_paths:
         parquet_file = pq.ParquetFile(parquet_path)
         row_count += parquet_file.metadata.num_rows
         column_count = max(column_count, len(parquet_file.schema.names))
-        if preview_df.empty:
-            for batch in parquet_file.iter_batches(batch_size=max_rows):
-                preview_df = batch.to_pandas()
-                break
+        if not column_names:
+            column_names = list(parquet_file.schema.names)
 
-    print(f"Files: {len(parquet_paths):,}; rows: {row_count:,}; columns: {column_count:,}")
-    print(preview_df.head(max_rows) if not preview_df.empty else "(empty)")
+    _workflow_log(name, f"files={len(parquet_paths):,}; rows={row_count:,}; columns={column_count:,}", kind="INFO")
+    _workflow_log(name, f"Column sample: {_format_column_preview(column_names, max_rows)}", kind="INFO")
 
 
 # Print row, column, and preview details for a CSV output file.
 def _overview_csv_file(path: Path, name: str, max_rows: int = 5) -> None:
-    print(f"\n{name}: {path}")
-    preview_df = pd.read_csv(path, nrows=max_rows)
+    _workflow_log(name, f"Inspecting CSV file at {path}", kind="INFO")
+    preview_df = pd.read_csv(path, nrows=0)
     with path.open(encoding="utf-8") as csv_file:
         row_count = sum(1 for _line in csv_file)
     row_count = max(0, row_count - 1)
-    print(f"Rows: {row_count:,}; columns: {len(preview_df.columns):,}")
-    print(preview_df if not preview_df.empty else "(empty)")
+    _workflow_log(name, f"rows={row_count:,}; columns={len(preview_df.columns):,}", kind="INFO")
+    _workflow_log(name, f"Column sample: {_format_column_preview(preview_df.columns, max_rows)}", kind="INFO")
 
 # Define the Arrow schema used for scenario-component parquet fragments.
 def _final_scenario_component_arrow_schema(pa):

@@ -6,6 +6,8 @@ from urllib.request import urlopen
 
 import pandas as pd
 
+from inspection_costs import _workflow_log
+
 
 SOURCE_URL = "https://epoch.ai/data/gpu_clusters.csv"
 DATA_DIR = Path("data")
@@ -142,10 +144,15 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(OUTPUT_CSV_PATH, index=False)
 
-    print("Unique Name counts by chip quantity bucket after filtering")
-    print(f"Total clusters after filters: {len(filtered_df)}")
+    _workflow_log(
+        "GPU Bucket Counts",
+        "Unique Name counts by chip quantity bucket after filtering",
+        kind="START",
+    )
+    _workflow_log("GPU Bucket Counts", f"Total clusters after filters: {len(filtered_df)}", kind="STEP")
+    _workflow_log("GPU Bucket Counts", "Bucket summary table follows", kind="INFO")
     print(summary_df.to_string(index=False))
-    print(f"\nWrote bucket summary to {OUTPUT_CSV_PATH}")
+    _workflow_log("GPU Bucket Counts", f"Wrote bucket summary to {OUTPUT_CSV_PATH}", kind="DONE")
 
 
 if __name__ == "__main__":

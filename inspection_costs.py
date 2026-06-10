@@ -92,6 +92,32 @@ PERFECT_INFORMATION_RELATIONSHIP_RULES_CSV_PATH = f"{PERFECT_INFORMATION_OUTPUT_
 PERFECT_INFORMATION_RELATIONSHIP_BOXPLOT_IMAGES_DIR = f"{PERFECT_INFORMATION_OUTPUT_DIR}/images"
 PLV_VARIANT_ORDER = ["PLV Renting", "PLV Owning"]
 
+def _workflow_stage(stage: str) -> None:
+    print(f"\n=== {stage} ===")
+
+
+def _workflow_log(stage: str, message: str, *, kind: str = "INFO") -> None:
+    print(f"[{kind:<5} | {stage}] {message}")
+
+
+def _format_column_preview(columns: Iterable[object], max_columns: int = 8) -> str:
+    column_list = [str(column) for column in columns]
+    if not column_list:
+        return "(none)"
+    preview = ", ".join(column_list[:max_columns])
+    remaining = len(column_list) - max_columns
+    if remaining > 0:
+        preview += f", ... (+{remaining} more)"
+    return preview
+
+
+def _should_log_progress(current: int, *, interval: int, first: int = 3, total: Optional[int] = None) -> bool:
+    if current <= first:
+        return True
+    if total is not None and current >= total:
+        return True
+    return current % interval == 0
+
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
 
 
@@ -274,15 +300,15 @@ def _write_relationship_outputs(
     from inspection_costs_stage1 import _overview_csv_file, _overview_dataframe
     from inspection_costs_stage3 import _summarize_relationships_from_parquet, _write_relationship_boxplot_values_from_parquet
 
-    print(f"Generating {label} relationship summary at {summary_path}")
+    _workflow_log("Stage 3 / Relationships", f"Generating {label} relationship summary at {summary_path}", kind="START")
     relationship_summary_df = _summarize_relationships_from_parquet(parquet_path)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Writing {label} relationship summary CSV to {summary_path}")
+    _workflow_log("Stage 3 / Relationships", f"Writing {label} relationship summary CSV to {summary_path}", kind="STEP")
     relationship_summary_df.to_csv(summary_path, index=False)
     _overview_dataframe(f"{label} relationship summary", relationship_summary_df)
     _overview_csv_file(summary_path, f"{label} relationship summary CSV")
 
-    print(f"Generating {label} relationship boxplot summary at {boxplot_values_path}")
+    _workflow_log("Stage 3 / Boxplots", f"Generating {label} relationship boxplot summary at {boxplot_values_path}", kind="START")
     relationship_boxplot_df = _write_relationship_boxplot_values_from_parquet(
         parquet_path,
         boxplot_values_path,
@@ -304,7 +330,7 @@ def _write_relationship_code_rules(
     from inspection_costs_stage1 import _overview_csv_file, _overview_dataframe
     from inspection_costs_stage3 import _write_relationship_code_rules_from_dataframes
 
-    print(f"Generating {label} relationship code rules at {output_csv_path}")
+    _workflow_log("Stage 3 / Rules", f"Generating {label} relationship code rules at {output_csv_path}", kind="START")
     relationship_rules_df = _write_relationship_code_rules_from_dataframes(
         scenario_df=scenario_df,
         scenario_component_df=scenario_component_df,
@@ -390,12 +416,14 @@ def run_inspection_costs_workflow(
     perfect_information_relationship_rules_df = None
     start_time = time.perf_counter()
 
-    print("Starting inspection costs workflow")
-    print("Clearing prior workflow artifacts from data and output directories")
+    _workflow_stage("Inspection Costs Workflow")
+    _workflow_log("Workflow", "Starting inspection costs workflow", kind="START")
+    _workflow_log("Workflow", "Clearing prior workflow artifacts from data and output directories", kind="STEP")
     _reset_workflow_artifacts()
 
     # Stage 1 starts with a lookup table for detection probability and expected identified diversion.
-    print(f"Ensuring detection lookup table exists at {DETECTION_LOOKUP_TABLE_PARQUET_PATH}")
+    _workflow_stage("Stage 1 / Detection Lookup")
+    _workflow_log("Stage 1 / Detection Lookup", f"Ensuring detection lookup table exists at {DETECTION_LOOKUP_TABLE_PARQUET_PATH}", kind="START")
     detection_lookup_table = build_detection_lookup_table(
         cluster_sizes=cluster_sizes,
         K_vals=k_vals,
@@ -404,7 +432,8 @@ def run_inspection_costs_workflow(
     )
     _overview_dataframe("Detection lookup table", detection_lookup_table)
 
-    print("Building scenario-component rows")
+    _workflow_stage("Stage 1 / Scenario Components")
+    _workflow_log("Stage 1 / Scenario Components", "Building scenario-component rows", kind="START")
     write_mix_data_csv(
         cluster_sizes=cluster_sizes,
         target_chips=target_chips,
@@ -425,7 +454,7 @@ def run_inspection_costs_workflow(
     )
     _overview_dataframe("Scenario-component rows", scenario_component_df)
     scenarios_combined_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Saving scenario-component rows to {scenarios_combined_path}")
+    _workflow_log("Stage 1 / Scenario Components", f"Saving scenario-component rows to {scenarios_combined_path}", kind="STEP")
     scenario_component_df.to_parquet(
         scenarios_combined_path,
         index=False,
@@ -436,10 +465,11 @@ def run_inspection_costs_workflow(
     _overview_parquet_file(scenarios_combined_path, "Combined scenario-component parquet")
 
     # Stage 2 collapses component rows to one row per scenario, then adds cost and value metrics.
-    print(f"Aggregating scenario-component rows to scenario level")
+    _workflow_stage("Stage 2 / Scenario Summary")
+    _workflow_log("Stage 2 / Scenario Summary", "Aggregating scenario-component rows to scenario level", kind="START")
     scenario_df = _derive_scenario_summary_from_components(scenario_component_df)
     _overview_dataframe("Scenario-level rows", scenario_df)
-    print("Adding cost and value columns")
+    _workflow_log("Stage 2 / Scenario Summary", "Adding cost and value columns", kind="STEP")
     final_df = add_cost_value_columns(
         scenario_df,
         phys_inspection_salary_cost_per_tested_chip=phys_inspection_salary_cost_per_tested_chip,
@@ -448,15 +478,19 @@ def run_inspection_costs_workflow(
         plv_owning_cost_per_total_chip=plv_owning_cost_per_total_chip,
     )
     scenarios_costed_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Saving final scenarios to {scenarios_costed_path}")
+    _workflow_log("Stage 2 / Scenario Summary", f"Saving final scenarios to {scenarios_costed_path}", kind="STEP")
     final_df.to_parquet(scenarios_costed_path, index=False, compression=PARQUET_COMPRESSION)
 
     _overview_parquet_file(scenarios_costed_path, "Costed scenarios parquet")
 
-    print("Filtering costed scenarios for perfect-information subset")
+    _workflow_log("Stage 2 / Scenario Summary", "Filtering costed scenarios for perfect-information subset", kind="STEP")
     perfect_information_final_df = filter_perfect_information_scenarios(final_df)
     scenarios_costed_perfect_information_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Saving perfect-information scenarios to {scenarios_costed_perfect_information_path}")
+    _workflow_log(
+        "Stage 2 / Scenario Summary",
+        f"Saving perfect-information scenarios to {scenarios_costed_perfect_information_path}",
+        kind="STEP",
+    )
     perfect_information_final_df.to_parquet(
         scenarios_costed_perfect_information_path,
         index=False,
@@ -511,7 +545,7 @@ def run_inspection_costs_workflow(
     )
     write_workflow_constants_report(Path(WORKFLOW_CONSTANTS_TEXT_PATH))
     elapsed_seconds = time.perf_counter() - start_time
-    print(f"Inspection costs workflow complete in {elapsed_seconds:.2f} seconds")
+    _workflow_log("Workflow", f"Inspection costs workflow complete in {elapsed_seconds:.2f} seconds", kind="DONE")
     return {
         "scenario_component_df": scenario_component_df,
         "final_df": final_df,

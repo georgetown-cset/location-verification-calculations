@@ -24,6 +24,8 @@ from inspection_costs import (
     _plv_relationship_labels,
     _plv_variant_specs,
     _scenario_variant_label,
+    _should_log_progress,
+    _workflow_log,
 )
 from inspection_costs_stage1 import (
     _iter_parquet_batches,
@@ -113,7 +115,7 @@ def write_workflow_constants_report(output_text_path: Path) -> None:
     }
     report_text = "Workflow Constants\n" + "=" * 19 + "\n\n" + pformat(constants_payload, sort_dicts=False, width=100) + "\n"
     output_text_path.write_text(report_text, encoding="utf-8")
-    print(f"Writing workflow constants report to {output_text_path}")
+    _workflow_log("Stage 3 / Constants", f"Wrote workflow constants report to {output_text_path}", kind="DONE")
 
 
 # Summarize observed feature bounds for each relationship code and PLV variant.
@@ -320,7 +322,7 @@ def _write_relationship_code_rules_from_dataframes(
             ]
         )
         empty_df.to_csv(output_csv_path, index=False)
-        print(f"Wrote empty relationship rule summary for {label} to {output_csv_path}")
+        _workflow_log("Stage 3 / Rules", f"Wrote empty relationship rule summary for {label} to {output_csv_path}", kind="DONE")
         return empty_df
 
     rule_source_df = _build_relationship_rule_frame(scenario_df, scenario_component_df)
@@ -339,8 +341,8 @@ def _write_relationship_code_rules_from_dataframes(
         )
 
     result = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
-    print(f"Writing relationship code rules CSV to {output_csv_path}")
     result.to_csv(output_csv_path, index=False)
+    _workflow_log("Stage 3 / Rules", f"Wrote relationship code rules CSV to {output_csv_path}", kind="DONE")
     return result
 
 
@@ -349,7 +351,7 @@ def _summarize_relationships_from_parquet(
     parquet_path: Path,
     batch_size: int = 65_536,
 ) -> pd.DataFrame:
-    print(f"Summarizing relationship counts from cached costed parquet: {parquet_path}")
+    _workflow_log("Stage 3 / Relationships", f"Summarizing relationship counts from cached costed parquet: {parquet_path}", kind="START")
     summaries = []
     for variant in _plv_variant_specs():
         plv_type = str(variant["plv_type"])
@@ -651,7 +653,7 @@ def _render_relationship_boxplot_images(
         fig.savefig(output_path, format="jpeg", dpi=300, bbox_inches="tight")
         plt.close(fig)
         saved_paths.append(output_path)
-        print(f"Wrote relationship boxplot image to {output_path}")
+        _workflow_log("Stage 3 / Boxplots", f"Wrote relationship boxplot image to {output_path}", kind="STEP")
 
     return saved_paths
 
@@ -663,7 +665,7 @@ def _write_relationship_boxplot_values_from_parquet(
     output_images_dir: Path,
     batch_size: int = 65_536,
 ) -> pd.DataFrame:
-    print(f"Building relationship boxplot summary from cached costed parquet: {parquet_path}")
+    _workflow_log("Stage 3 / Boxplots", f"Building relationship boxplot summary from cached costed parquet: {parquet_path}", kind="START")
     columns = [
         COLUMN_NAMES['mix_id'],
         COLUMN_NAMES['scenario_id'],
@@ -688,21 +690,25 @@ def _write_relationship_boxplot_values_from_parquet(
     for batch_df in _iter_parquet_batches(parquet_path, columns=columns, batch_size=batch_size):
         boxplot_df = _build_relationship_boxplot_dataframe(batch_df)
         if boxplot_df.empty:
-            print("Processed boxplot batch with 0 rows")
             continue
         grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
 
         # Accumulate raw values by group so quantiles can be computed after all batches are read.
         for group_key, values in grouped:
             grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
-        print(f"Accumulated {len(boxplot_df)} boxplot rows from current batch")
+        if _should_log_progress(len(grouped_values), interval=10, first=1):
+            _workflow_log(
+                "Stage 3 / Boxplots",
+                f"Accumulated {len(boxplot_df)} boxplot rows from current batch; grouped series={len(grouped_values)}",
+                kind="STEP",
+            )
 
     if not grouped_values:
         empty_summary = _summarize_relationship_boxplot_dataframe(
             pd.DataFrame(columns=[*group_columns, COLUMN_NAMES['value']])
         )
         empty_summary.to_csv(output_csv_path, index=False)
-        print(f"Wrote empty relationship boxplot summary to {output_csv_path}")
+        _workflow_log("Stage 3 / Boxplots", f"Wrote empty relationship boxplot summary to {output_csv_path}", kind="DONE")
         return empty_summary
 
     summary_rows = []
@@ -731,7 +737,7 @@ def _write_relationship_boxplot_values_from_parquet(
     summary_df = pd.DataFrame(summary_rows)
     summary_df[COLUMN_NAMES['plv_type']] = pd.Categorical(summary_df[COLUMN_NAMES['plv_type']], categories=PLV_VARIANT_ORDER, ordered=True)
     summary_df = summary_df.sort_values(group_columns).reset_index(drop=True)
-    print(f"Writing relationship boxplot summary CSV to {output_csv_path}")
     summary_df.to_csv(output_csv_path, index=False)
+    _workflow_log("Stage 3 / Boxplots", f"Wrote relationship boxplot summary CSV to {output_csv_path}", kind="DONE")
     _render_relationship_boxplot_images(grouped_values, output_images_dir)
     return summary_df

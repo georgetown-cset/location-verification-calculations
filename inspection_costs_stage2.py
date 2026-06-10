@@ -13,6 +13,7 @@ from inspection_costs import (
     PLV_RENTING_COST_PER_TOTAL_CHIP,
     TARGET_CHIPS,
     _plv_variant_specs,
+    _workflow_log,
 )
 
 
@@ -62,9 +63,10 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
 
     grouped = summary_source.groupby(COLUMN_NAMES['scenario_id'], sort=False, observed=True)
     total_scenarios = grouped.ngroups
-    print(
-        f"_derive_scenario_summary_from_components: deriving {total_scenarios} scenario summaries "
-        f"from {len(scenario_component_df)} scenario-component rows"
+    _workflow_log(
+        "Stage 2 / Scenario Summary",
+        f"Deriving {total_scenarios} scenario summaries from {len(scenario_component_df)} scenario-component rows",
+        kind="START",
     )
 
     # Sum additive quantities while carrying through the identifying mix and parameter-combo fields.
@@ -133,8 +135,10 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         ]
     ]
 
-    print(
-        f"_derive_scenario_summary_from_components: completed {len(scenario_summary)} scenario summaries"
+    _workflow_log(
+        "Stage 2 / Scenario Summary",
+        f"Completed {len(scenario_summary)} scenario summaries",
+        kind="DONE",
     )
     return scenario_summary
 
@@ -166,10 +170,13 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
         kind="mergesort",
     ).reset_index(drop=True)
 
-    print(
-        "filter_perfect_information_scenarios: kept "
-        f"{len(filtered_df):,} of {len(final_df):,} scenarios across "
-        f"{len(selected_indices):,} grouped combinations"
+    _workflow_log(
+        "Stage 2 / Scenario Summary",
+        (
+            f"Kept {len(filtered_df):,} of {len(final_df):,} scenarios across "
+            f"{len(selected_indices):,} grouped combinations"
+        ),
+        kind="STEP",
     )
     return filtered_df
 
