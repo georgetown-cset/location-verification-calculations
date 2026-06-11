@@ -20,7 +20,6 @@ PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2_590, 6_050)
 PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS)  # 12 - 500 landmark servers
 
-SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS = [0.25]  # Shares of clusters in a scenario component assumed to contain smuggling.
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
 MIN_SCENARIO_DIVERTED_CHIPS = 114_000  # Minimum number of total diverted chips across a full scenario.
 PLV_DISCOUNT_RATE = 0.5  # Fractional multiplier applied to PLV value.
@@ -30,6 +29,7 @@ PLV_M = 0.1  # Failure probability for a PLV test.
 MIX_STEP_SIZE = 7  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1_000, 10_000, 100_000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 10, 100, 1_000, 10_000, 100_000]  # Diverted chips in a cluster with smuggling.
+SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS = [0.25]  # Shares of clusters in a scenario component assumed to contain smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1_000]  # Chips inspected per cluster.
 
 ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
@@ -59,7 +59,6 @@ WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION",
     "PLV_RENTING_COST_PER_TOTAL_CHIP",
     "PLV_OWNING_COST_PER_TOTAL_CHIP",
-    "SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS",
     "MIN_DIVERTED_CHIPS",
     "MIN_SCENARIO_DIVERTED_CHIPS",
     "PLV_DISCOUNT_RATE",
@@ -68,6 +67,7 @@ WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "MIX_STEP_SIZE",
     "CLUSTER_SIZES",
     "K_VALS",
+    "SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS",
     "CHIPS_INSPECTED_PER_CLUSTER_VALS",
     "ADDITIONAL_MIN_CLUSTERS_BY_SIZE",
     "MIX_STEPS",

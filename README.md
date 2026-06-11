@@ -172,7 +172,6 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION`: Physical-inspection fixed cost range.
 - `PLV_RENTING_COST_PER_TOTAL_CHIP`: PLV renting cost range.
 - `PLV_OWNING_COST_PER_TOTAL_CHIP`: PLV owning cost range.
-- `SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS`: Candidate shares of clusters in each scenario component assumed to contain smuggling.
 - `MIN_DIVERTED_CHIPS`: Minimum diverted-chip count allowed for positive-`K` components of each scenario (`100`), except that `K = 0` and full diversion (`K = N`) are always allowed.
 - `MIN_SCENARIO_DIVERTED_CHIPS`: Minimum total diverted-chip count allowed across a full scenario.
 - `PLV_DISCOUNT_RATE`: Fractional multiplier applied to PLV value.
@@ -181,6 +180,7 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `MIX_STEP_SIZE`: Number of equal steps used to enumerate cluster-mix shares.
 - `CLUSTER_SIZES`: Candidate cluster-size buckets.
 - `K_VALS`: Candidate diverted-chip counts per cluster.
+- `SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS`: Candidate shares of clusters in each scenario component assumed to contain smuggling.
 - `CHIPS_INSPECTED_PER_CLUSTER_VALS`: Candidate physical-inspection chip counts inspected per cluster.
 
 ## Dependencies
