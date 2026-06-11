@@ -20,7 +20,7 @@ PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION = (2_590, 6_050)
 PLV_RENTING_COST_PER_TOTAL_CHIP = (2_251_688 / TARGET_CHIPS, 72_427_200 / TARGET_CHIPS)  # 12 - 500 landmark servers
 PLV_OWNING_COST_PER_TOTAL_CHIP = (3_028_862 / TARGET_CHIPS, 28_715_814 / TARGET_CHIPS)  # 12 - 500 landmark servers
 
-SHARE_OF_CLUSTERS_WITH_SMUGGLING = 0.25  # Share of clusters in a scenario component assumed to contain smuggling.
+SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS = [0.25]  # Shares of clusters in a scenario component assumed to contain smuggling.
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
 MIN_SCENARIO_DIVERTED_CHIPS = 114_000  # Minimum number of total diverted chips across a full scenario.
 PLV_DISCOUNT_RATE = 0.5  # Fractional multiplier applied to PLV value.
@@ -59,7 +59,7 @@ WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION",
     "PLV_RENTING_COST_PER_TOTAL_CHIP",
     "PLV_OWNING_COST_PER_TOTAL_CHIP",
-    "SHARE_OF_CLUSTERS_WITH_SMUGGLING",
+    "SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS",
     "MIN_DIVERTED_CHIPS",
     "MIN_SCENARIO_DIVERTED_CHIPS",
     "PLV_DISCOUNT_RATE",
@@ -175,6 +175,7 @@ COLUMN_NAMES = {
     "scenario_component_count": "Scenario Component Count",
     "k_combo": "K Combo",
     "chips_inspected_per_cluster_combo": "Chips Inspected Per Cluster Combo",
+    "share_of_clusters_with_smuggling": "Share of Clusters with Smuggling",
     "cluster_size": "Cluster Size (N)",
     "bad_records": "Bad Records (K)",
     "total_bad_records": "Total Bad Records",
@@ -213,6 +214,7 @@ SCENARIO_COLUMNS = [
     COLUMN_NAMES["scenario_component_count"],
     COLUMN_NAMES["k_combo"],
     COLUMN_NAMES["chips_inspected_per_cluster_combo"],
+    COLUMN_NAMES["share_of_clusters_with_smuggling"],
     COLUMN_NAMES["cluster_size"],
     COLUMN_NAMES["bad_records"],
     COLUMN_NAMES["total_bad_records"],
@@ -357,8 +359,7 @@ def run_inspection_costs_workflow(
     min_scenario_diverted_chips: int = MIN_SCENARIO_DIVERTED_CHIPS,
     chips_inspected_per_cluster_vals: Iterable[int] = CHIPS_INSPECTED_PER_CLUSTER_VALS,
     extra_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
-    physical_m_vals: float | Iterable[float] = PHYSICAL_INSPECTION_M_VAL,
-    plv_m_vals: float | Iterable[float] = PLV_M_VAL,
+    share_of_clusters_with_smuggling_vals: Iterable[float] = SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS,
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = MIX_STEPS,
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
@@ -395,9 +396,8 @@ def run_inspection_costs_workflow(
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
     chips_inspected_per_cluster_vals = list(chips_inspected_per_cluster_vals)
-    physical_m_vals = _as_float_list(physical_m_vals)
-    plv_m_vals = _as_float_list(plv_m_vals)
-    detection_m_vals = sorted(set(physical_m_vals) | set(plv_m_vals))
+    share_of_clusters_with_smuggling_vals = _as_float_list(share_of_clusters_with_smuggling_vals)
+    detection_m_vals = ALL_M_VALS
     steps = list(steps) if steps is not None else None
 
     # Resolve all output locations once so the rest of the workflow can pass concrete Path objects.
@@ -461,8 +461,7 @@ def run_inspection_costs_workflow(
         k_vals=k_vals,
         min_scenario_diverted_chips=min_scenario_diverted_chips,
         min_clusters_by_size=min_clusters_by_size,
-        physical_m_vals=physical_m_vals,
-        plv_m_vals=plv_m_vals,
+        share_of_clusters_with_smuggling_vals=share_of_clusters_with_smuggling_vals,
         target_chips=target_chips,
         steps=steps,
         mix_data=mix_data,

@@ -59,6 +59,7 @@ class TestWorkflowOutput:
         assert inspection_costs.PHYSICAL_INSPECTION_M_VAL == 0.05
         assert inspection_costs.PLV_M_VAL == 0.1
         assert inspection_costs.ALL_M_VALS == [0.05, 0.1]
+        assert inspection_costs.SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS == [0.25]
 
     def test_workflow_constant_report_order_matches_constants_block(self):
         assert inspection_costs.WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS == (
@@ -68,7 +69,7 @@ class TestWorkflowOutput:
             "PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION",
             "PLV_RENTING_COST_PER_TOTAL_CHIP",
             "PLV_OWNING_COST_PER_TOTAL_CHIP",
-            "SHARE_OF_CLUSTERS_WITH_SMUGGLING",
+            "SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS",
             "MIN_DIVERTED_CHIPS",
             "MIN_SCENARIO_DIVERTED_CHIPS",
             "PLV_DISCOUNT_RATE",
@@ -313,11 +314,11 @@ class TestMixHelpers:
         assert build_mix_description(self._components()) == "5x(N=100) + 50x(N=10)"
 
     @pytest.mark.parametrize(
-        ("number_of_clusters", "expected"),
-        [(0, 0), (1, 1), (2, 1), (4, 1), (6, 2), (10, 3), (100, 25)],
+        ("number_of_clusters", "share_of_clusters_with_smuggling", "expected"),
+        [(0, 0.25, 0), (1, 0.25, 1), (2, 0.25, 1), (4, 0.25, 1), (6, 0.25, 2), (10, 0.25, 3), (100, 0.25, 25), (10, 0.5, 5)],
     )
-    def test_number_of_clusters_with_smuggling(self, number_of_clusters, expected):
-        assert _number_of_clusters_with_smuggling(number_of_clusters) == expected
+    def test_number_of_clusters_with_smuggling(self, number_of_clusters, share_of_clusters_with_smuggling, expected):
+        assert _number_of_clusters_with_smuggling(number_of_clusters, share_of_clusters_with_smuggling) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -339,8 +340,6 @@ class TestBuildScenarios:
             detection_lookup_table=lookup,
             k_vals=[0, 10],
             min_scenario_diverted_chips=min_scenario_diverted_chips,
-            physical_m_vals=[0.05],
-            plv_m_vals=[0.1],
             target_chips=100,
             steps=[0.0, 1.0],
             output_parquet_path=None,
@@ -363,6 +362,30 @@ class TestBuildScenarios:
         df = self._build(min_scenario_diverted_chips=1)
         assert df[COLUMN_NAMES["scenario_id"]].nunique() == 2
         assert (df[COLUMN_NAMES["bad_records"]] == 10).all()
+
+    def test_share_options_create_distinct_scenarios(self):
+        lookup = build_detection_lookup_table(
+            cluster_sizes=[10],
+            K_vals=[10],
+            chips_inspected_per_cluster_vals=[10],
+            m_vals=[0.05, 0.1],
+            parquet_path=None,
+        )
+        df = build_scenarios(
+            cluster_sizes=[10],
+            detection_lookup_table=lookup,
+            k_vals=[10],
+            min_scenario_diverted_chips=0,
+            share_of_clusters_with_smuggling_vals=[0.1, 0.5],
+            target_chips=100,
+            steps=[1.0],
+            output_parquet_path=None,
+        )
+
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 2
+        assert set(df[COLUMN_NAMES["share_of_clusters_with_smuggling"]]) == {0.1, 0.5}
+        assert set(df[COLUMN_NAMES["number_of_clusters_with_smuggling"]]) == {1, 5}
+        assert set(df[COLUMN_NAMES["total_bad_records"]]) == {10, 50}
 
     def test_negative_minimum_raises(self):
         lookup = build_detection_lookup_table(
@@ -404,8 +427,6 @@ class TestBuildScenarios:
             detection_lookup_table=lookup,
             k_vals=[0, 10],
             min_scenario_diverted_chips=0,
-            physical_m_vals=[0.05],
-            plv_m_vals=[0.1],
             target_chips=100,
             steps=[0.0, 1.0],
             output_parquet_path=output_parquet_path,
@@ -431,6 +452,7 @@ def _component_frame():
             COLUMN_NAMES["mix_description"]: "desc",
             COLUMN_NAMES["k_combo"]: "10-100",
             COLUMN_NAMES["chips_inspected_per_cluster_combo"]: "1-10",
+            COLUMN_NAMES["share_of_clusters_with_smuggling"]: 0.25,
             COLUMN_NAMES["physical_inspection_chip_level_miss_prob"]: 0.05,
             COLUMN_NAMES["plv_chip_level_miss_prob"]: 0.1,
             COLUMN_NAMES["total_tests"]: 50,
@@ -447,6 +469,7 @@ def _component_frame():
             COLUMN_NAMES["mix_description"]: "desc",
             COLUMN_NAMES["k_combo"]: "10-100",
             COLUMN_NAMES["chips_inspected_per_cluster_combo"]: "1-10",
+            COLUMN_NAMES["share_of_clusters_with_smuggling"]: 0.25,
             COLUMN_NAMES["physical_inspection_chip_level_miss_prob"]: 0.05,
             COLUMN_NAMES["plv_chip_level_miss_prob"]: 0.1,
             COLUMN_NAMES["total_tests"]: 50,
@@ -464,6 +487,7 @@ def _component_frame():
             COLUMN_NAMES["mix_description"]: "other",
             COLUMN_NAMES["k_combo"]: "0",
             COLUMN_NAMES["chips_inspected_per_cluster_combo"]: "0",
+            COLUMN_NAMES["share_of_clusters_with_smuggling"]: 0.25,
             COLUMN_NAMES["physical_inspection_chip_level_miss_prob"]: 0.05,
             COLUMN_NAMES["plv_chip_level_miss_prob"]: 0.1,
             COLUMN_NAMES["total_tests"]: 0,
@@ -488,6 +512,7 @@ class TestDeriveScenarioSummary:
         assert s1[COLUMN_NAMES["total_tests"]] == 100
         assert s1[COLUMN_NAMES["total_component_chips"]] == 1000
         assert s1[COLUMN_NAMES["bad_records"]] == 230
+        assert s1[COLUMN_NAMES["share_of_clusters_with_smuggling"]] == 0.25
         assert s1[COLUMN_NAMES["number_of_clusters_with_smuggling"]] == 15
         assert s1[
             COLUMN_NAMES["physical_inspection_total_diverted_chips_identified"]
@@ -502,6 +527,7 @@ class TestDeriveScenarioSummary:
         )
         assert summary.empty
         assert COLUMN_NAMES["scenario_id"] in summary.columns
+        assert COLUMN_NAMES["share_of_clusters_with_smuggling"] in summary.columns
         assert COLUMN_NAMES["total_tests"] in summary.columns
 
 
@@ -616,6 +642,7 @@ class TestFilterPerfectInformationScenarios:
                     COLUMN_NAMES["mix_id"]: "MixA",
                     COLUMN_NAMES["scenario_id"]: scenario_id,
                     COLUMN_NAMES["k_combo"]: "10",
+                    COLUMN_NAMES["share_of_clusters_with_smuggling"]: 0.25,
                     COLUMN_NAMES["physical_inspection_chip_level_miss_prob"]: 0.05,
                     COLUMN_NAMES["plv_chip_level_miss_prob"]: 0.1,
                     "Physical - Max Value Per Cost": vpc_max,
@@ -627,6 +654,7 @@ class TestFilterPerfectInformationScenarios:
                 COLUMN_NAMES["mix_id"]: "MixB",
                 COLUMN_NAMES["scenario_id"]: "S4",
                 COLUMN_NAMES["k_combo"]: "0",
+                COLUMN_NAMES["share_of_clusters_with_smuggling"]: 0.25,
                 COLUMN_NAMES["physical_inspection_chip_level_miss_prob"]: 0.05,
                 COLUMN_NAMES["plv_chip_level_miss_prob"]: 0.1,
                 "Physical - Max Value Per Cost": 0.0,
@@ -744,8 +772,6 @@ class TestEndToEndWorkflow:
             min_scenario_diverted_chips=0,
             chips_inspected_per_cluster_vals=[0, 1, 10],
             extra_min_clusters_by_size=None,
-            physical_m_vals=[0.05],
-            plv_m_vals=[0.1],
             target_chips=1000,
             steps=[0.0, 0.5, 1.0],
         )
@@ -769,8 +795,6 @@ class TestEndToEndWorkflow:
             min_scenario_diverted_chips=0,
             chips_inspected_per_cluster_vals=[0, 1, 10],
             extra_min_clusters_by_size=None,
-            physical_m_vals=[0.05],
-            plv_m_vals=[0.1],
             target_chips=1000,
             steps=[0.0, 0.5, 1.0],
         )
@@ -807,8 +831,6 @@ class TestEndToEndWorkflow:
             min_scenario_diverted_chips=0,
             chips_inspected_per_cluster_vals=[0, 1, 10],
             extra_min_clusters_by_size=None,
-            physical_m_vals=[0.05],
-            plv_m_vals=[0.1],
             target_chips=1000,
             steps=[0.0, 0.5, 1.0],
         )
@@ -947,8 +969,6 @@ class TestWorkflowReset:
             min_scenario_diverted_chips=0,
             chips_inspected_per_cluster_vals=[0, 10],
             extra_min_clusters_by_size=None,
-            physical_m_vals=[0.05],
-            plv_m_vals=[0.1],
             target_chips=1000,
             steps=[0.0, 1.0],
         )

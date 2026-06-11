@@ -29,6 +29,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
                 COLUMN_NAMES['scenario_component_count'],
                 COLUMN_NAMES['k_combo'],
                 COLUMN_NAMES['chips_inspected_per_cluster_combo'],
+                COLUMN_NAMES['share_of_clusters_with_smuggling'],
                 COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
                 COLUMN_NAMES['plv_chip_level_miss_prob'],
                 COLUMN_NAMES['total_tests'],
@@ -49,6 +50,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['mix_description'],
             COLUMN_NAMES['k_combo'],
             COLUMN_NAMES['chips_inspected_per_cluster_combo'],
+            COLUMN_NAMES['share_of_clusters_with_smuggling'],
             COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             COLUMN_NAMES['plv_chip_level_miss_prob'],
             COLUMN_NAMES['total_tests'],
@@ -77,6 +79,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         Scenario_Component_Count=(COLUMN_NAMES['number_of_clusters'], "size"),
         K_Combo=(COLUMN_NAMES['k_combo'], "first"),
         Chips_Inspected_Per_Cluster_Combo=(COLUMN_NAMES['chips_inspected_per_cluster_combo'], "first"),
+        Share_of_Clusters_with_Smuggling=(COLUMN_NAMES['share_of_clusters_with_smuggling'], "first"),
         Physical_Inspection_Chip_Level_Miss_Prob=(
             COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             "first",
@@ -103,6 +106,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             "Scenario_Component_Count": COLUMN_NAMES['scenario_component_count'],
             "K_Combo": COLUMN_NAMES['k_combo'],
             "Chips_Inspected_Per_Cluster_Combo": COLUMN_NAMES['chips_inspected_per_cluster_combo'],
+            "Share_of_Clusters_with_Smuggling": COLUMN_NAMES['share_of_clusters_with_smuggling'],
             "Physical_Inspection_Chip_Level_Miss_Prob": COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             "PLV_Chip_Level_Miss_Prob": COLUMN_NAMES['plv_chip_level_miss_prob'],
             "Total_Tests": COLUMN_NAMES['total_tests'],
@@ -124,6 +128,7 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
             COLUMN_NAMES['scenario_component_count'],
             COLUMN_NAMES['k_combo'],
             COLUMN_NAMES['chips_inspected_per_cluster_combo'],
+            COLUMN_NAMES['share_of_clusters_with_smuggling'],
             COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
             COLUMN_NAMES['plv_chip_level_miss_prob'],
             COLUMN_NAMES['total_tests'],
@@ -151,6 +156,7 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
     group_columns = [
         COLUMN_NAMES['mix_id'],
         COLUMN_NAMES['k_combo'],
+        COLUMN_NAMES['share_of_clusters_with_smuggling'],
         COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
         COLUMN_NAMES['plv_chip_level_miss_prob'],
     ]
@@ -159,14 +165,14 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
     # Stable sorting makes ties deterministic before choosing the best physical-inspection outcome.
     ordered_df = final_df.sort_values(
         group_columns + [COLUMN_NAMES['scenario_id']],
-        ascending=[True, True, True, True, True],
+        ascending=[True, True, True, True, True, True],
         kind="mergesort",
     )
     selected_indices = ordered_df.groupby(group_columns, sort=False, observed=True)[score_column].idxmax()
     filtered_df = ordered_df.loc[selected_indices].copy()
     filtered_df = filtered_df.sort_values(
         group_columns + [COLUMN_NAMES['scenario_id']],
-        ascending=[True, True, True, True, True],
+        ascending=[True, True, True, True, True, True],
         kind="mergesort",
     ).reset_index(drop=True)
 
