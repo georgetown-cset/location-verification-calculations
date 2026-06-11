@@ -703,6 +703,66 @@ class TestStage3Helpers:
         assert _format_rule_value(5.0) == "5"
         assert _format_rule_value(0.123456789) == "0.123457"
 
+    def test_relationship_boxplot_values_include_all_value_per_cost_bounds(self):
+        final_df = pd.DataFrame(
+            [
+                {
+                    COLUMN_NAMES["mix_id"]: "MixA",
+                    COLUMN_NAMES["scenario_id"]: "ScenarioA",
+                    "Physical vs PLV Renting Value Per Cost Relationship": "a",
+                    "Physical vs PLV Owning Value Per Cost Relationship": "e",
+                    COLUMN_NAMES["bad_records"]: 12,
+                    "Physical - Min Value Per Cost": 1.0,
+                    "Physical - Max Value Per Cost": 2.0,
+                    "PLV Renting - Min Value Per Cost": 3.0,
+                    "PLV Renting - Max Value Per Cost": 4.0,
+                    "PLV Owning - Min Value Per Cost": 5.0,
+                    "PLV Owning - Max Value Per Cost": 6.0,
+                }
+            ]
+        )
+
+        result = inspection_costs_stage3._build_relationship_boxplot_dataframe(final_df)
+        value_per_cost_rows = result[
+            result[COLUMN_NAMES["metric_family"]] == "Value Per Cost"
+        ]
+
+        for plv_type, relationship_code in [
+            ("PLV Renting", "a"),
+            ("PLV Owning", "e"),
+            ("PLV Renting", "Total"),
+            ("PLV Owning", "Total"),
+        ]:
+            relationship_rows = value_per_cost_rows[
+                (value_per_cost_rows[COLUMN_NAMES["plv_type"]] == plv_type)
+                & (
+                    value_per_cost_rows[COLUMN_NAMES["relationship_code"]]
+                    == relationship_code
+                )
+            ]
+
+            assert set(relationship_rows[COLUMN_NAMES["scenario_type"]]) == {
+                "Physical - Min Value Per Cost",
+                "Physical - Max Value Per Cost",
+                "PLV Renting - Min Value Per Cost",
+                "PLV Renting - Max Value Per Cost",
+                "PLV Owning - Min Value Per Cost",
+                "PLV Owning - Max Value Per Cost",
+            }
+            assert set(relationship_rows[COLUMN_NAMES["scenario_group"]]) == {
+                "Physical Inspection",
+                "PLV Renting",
+                "PLV Owning",
+            }
+            assert set(relationship_rows[COLUMN_NAMES["scenario_variant"]]) == {
+                "Physical (Conservative)",
+                "Physical (Optimistic)",
+                "PLV Renting (Conservative)",
+                "PLV Renting (Optimistic)",
+                "PLV Owning (Conservative)",
+                "PLV Owning (Optimistic)",
+            }
+
 
 # ---------------------------------------------------------------------------
 # Workflow-entry unit tests

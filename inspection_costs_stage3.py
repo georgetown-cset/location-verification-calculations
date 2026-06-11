@@ -404,6 +404,13 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
     """Return tidy raw rows for box plots split by relationship category, PLV variant, and metric family."""
 
     boxplot_frames: list[pd.DataFrame] = []
+    value_per_cost_columns = [
+        column
+        for column in LONG_SCENARIO_VALUE_VARS
+        if column in final_df.columns
+    ]
+    plv_types = [str(variant["plv_type"]) for variant in _plv_variant_specs()]
+
     for variant in _plv_variant_specs():
         plv_type = str(variant["plv_type"])
         vpc_relationship_column = f"Physical vs {plv_type} Value Per Cost Relationship"
@@ -416,10 +423,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
                 COLUMN_NAMES['mix_id'],
                 COLUMN_NAMES['scenario_id'],
                 vpc_relationship_column,
-                "Physical - Min Value Per Cost",
-                "Physical - Max Value Per Cost",
-                f"{plv_type} - Min Value Per Cost",
-                f"{plv_type} - Max Value Per Cost",
+                *value_per_cost_columns,
             ]
             if column in final_df.columns
         ]
@@ -430,12 +434,7 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         ]
         value_per_cost_df = final_df[value_per_cost_source_columns].melt(
             id_vars=value_per_cost_id_vars,
-            value_vars=[
-                "Physical - Min Value Per Cost",
-                "Physical - Max Value Per Cost",
-                f"{plv_type} - Min Value Per Cost",
-                f"{plv_type} - Max Value Per Cost",
-            ],
+            value_vars=value_per_cost_columns,
             var_name=COLUMN_NAMES['scenario_type'],
             value_name=COLUMN_NAMES['value'],
         )
@@ -445,14 +444,20 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         value_per_cost_df[COLUMN_NAMES['relationship_description']] = value_per_cost_df[COLUMN_NAMES['relationship_code']].map(
             vpc_relationship_labels
         )
-        value_per_cost_df[COLUMN_NAMES['scenario_group']] = np.where(
-            value_per_cost_df[COLUMN_NAMES['scenario_type']].str.startswith("Physical"),
-            "Physical Inspection",
-            plv_type,
+        value_per_cost_df[COLUMN_NAMES['scenario_group']] = value_per_cost_df[COLUMN_NAMES['scenario_type']].map(
+            lambda scenario_type: "Physical Inspection"
+            if scenario_type.startswith("Physical")
+            else next((variant_type for variant_type in plv_types if scenario_type.startswith(variant_type)), plv_type)
         )
         value_per_cost_df[COLUMN_NAMES['scenario_variant']] = value_per_cost_df[COLUMN_NAMES['scenario_type']].map(
-            lambda scenario_type: _scenario_variant_label(scenario_type, plv_type)
+            lambda scenario_type: _scenario_variant_label(
+                scenario_type,
+                next((variant_type for variant_type in plv_types if scenario_type.startswith(variant_type)), plv_type),
+            )
         )
+        value_per_cost_total_df = value_per_cost_df.copy()
+        value_per_cost_total_df[COLUMN_NAMES['relationship_code']] = "Total"
+        value_per_cost_total_df[COLUMN_NAMES['relationship_description']] = "All relationship categories"
 
         # Add a second metric family with one smuggled-chip value per scenario.
         smuggled_chips_df = final_df[
@@ -478,8 +483,11 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         smuggled_chips_df[COLUMN_NAMES['scenario_variant']] = SMUGGLED_CHIPS_SCENARIO_VARIANT
         smuggled_chips_df[COLUMN_NAMES['scenario_type']] = SMUGGLED_CHIPS_SCENARIO_TYPE
         smuggled_chips_df[COLUMN_NAMES['value']] = smuggled_chips_df[COLUMN_NAMES['value']].astype("float64")
+        smuggled_chips_total_df = smuggled_chips_df.copy()
+        smuggled_chips_total_df[COLUMN_NAMES['relationship_code']] = "Total"
+        smuggled_chips_total_df[COLUMN_NAMES['relationship_description']] = "All relationship categories"
 
-        boxplot_frames.extend([value_per_cost_df, smuggled_chips_df])
+        boxplot_frames.extend([value_per_cost_df, value_per_cost_total_df, smuggled_chips_df, smuggled_chips_total_df])
 
     boxplot_df = pd.concat(boxplot_frames, ignore_index=True)
     output_columns = [
@@ -537,6 +545,11 @@ def _summarize_relationship_boxplot_dataframe(boxplot_df: pd.DataFrame) -> pd.Da
     summary = summary.reset_index()
     summary = summary.rename(columns={"Scenario_Count": COLUMN_NAMES['scenario_count']})
     summary[COLUMN_NAMES['plv_type']] = pd.Categorical(summary[COLUMN_NAMES['plv_type']], categories=PLV_VARIANT_ORDER, ordered=True)
+    summary[COLUMN_NAMES['relationship_code']] = pd.Categorical(
+        summary[COLUMN_NAMES['relationship_code']],
+        categories=RELATIONSHIP_CODE_ORDER + ["Total"],
+        ordered=True,
+    )
     return summary[
         [
             *group_columns,
@@ -742,6 +755,11 @@ def _write_relationship_outputs_from_parquet(
     relationship_boxplot_df[COLUMN_NAMES['plv_type']] = pd.Categorical(
         relationship_boxplot_df[COLUMN_NAMES['plv_type']],
         categories=PLV_VARIANT_ORDER,
+        ordered=True,
+    )
+    relationship_boxplot_df[COLUMN_NAMES['relationship_code']] = pd.Categorical(
+        relationship_boxplot_df[COLUMN_NAMES['relationship_code']],
+        categories=RELATIONSHIP_CODE_ORDER + ["Total"],
         ordered=True,
     )
     relationship_boxplot_df = relationship_boxplot_df.sort_values(group_columns).reset_index(drop=True)
