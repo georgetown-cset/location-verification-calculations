@@ -157,22 +157,20 @@ def filter_perfect_information_scenarios(final_df: pd.DataFrame) -> pd.DataFrame
         COLUMN_NAMES['mix_id'],
         COLUMN_NAMES['k_combo'],
         COLUMN_NAMES['share_of_clusters_with_smuggling'],
-        COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
-        COLUMN_NAMES['plv_chip_level_miss_prob'],
     ]
     score_column = "Physical - Max Value Per Cost"
 
     # Stable sorting makes ties deterministic before choosing the best physical-inspection outcome.
     ordered_df = final_df.sort_values(
         group_columns + [COLUMN_NAMES['scenario_id']],
-        ascending=[True, True, True, True, True, True],
+        ascending=[True, True, True, True],
         kind="mergesort",
     )
     selected_indices = ordered_df.groupby(group_columns, sort=False, observed=True)[score_column].idxmax()
     filtered_df = ordered_df.loc[selected_indices].copy()
     filtered_df = filtered_df.sort_values(
         group_columns + [COLUMN_NAMES['scenario_id']],
-        ascending=[True, True, True, True, True, True],
+        ascending=[True, True, True, True],
         kind="mergesort",
     ).reset_index(drop=True)
 

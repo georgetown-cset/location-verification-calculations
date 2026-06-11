@@ -59,7 +59,7 @@ class TestWorkflowOutput:
         assert inspection_costs.PHYSICAL_INSPECTION_M == 0.05
         assert inspection_costs.PLV_M == 0.1
         assert inspection_costs.ALL_M_VALS == [0.05, 0.1]
-        assert inspection_costs.SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS == [0.25]
+        assert inspection_costs.SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS == [0.2, 0.5]
 
     def test_workflow_constant_report_order_matches_constants_block(self):
         assert inspection_costs.WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS == (
@@ -348,8 +348,8 @@ class TestBuildScenarios:
     def test_in_memory_columns_and_invariants(self):
         df = self._build(min_scenario_diverted_chips=0)
         assert list(df.columns) == SCENARIO_COLUMNS
-        # One mix (10 clusters of size 10), 2 K options x 2 inspected options.
-        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
+        # One mix, 2 smuggling shares x 2 K options x 2 inspected options.
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 8
         # Single-component mix: one row per scenario, totalling target chips.
         assert (df[COLUMN_NAMES["total_component_chips"]] == 100).all()
         assert (
@@ -360,7 +360,7 @@ class TestBuildScenarios:
 
     def test_min_scenario_diverted_chips_filters_zero_k(self):
         df = self._build(min_scenario_diverted_chips=1)
-        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 2
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
         assert (df[COLUMN_NAMES["bad_records"]] == 10).all()
 
     def test_share_options_create_distinct_scenarios(self):
@@ -434,7 +434,7 @@ class TestBuildScenarios:
         )
 
         assert read_parquet_calls == [output_parquet_path]
-        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 8
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +666,20 @@ class TestFilterPerfectInformationScenarios:
         filtered = filter_perfect_information_scenarios(self._costed_frame())
         assert set(filtered[COLUMN_NAMES["scenario_id"]]) == {"S2", "S4"}
 
+    def test_miss_probabilities_do_not_split_groups(self):
+        costed = self._costed_frame()
+        duplicate_group = costed.iloc[[0]].copy()
+        duplicate_group[COLUMN_NAMES["scenario_id"]] = "S5"
+        duplicate_group[COLUMN_NAMES["physical_inspection_chip_level_miss_prob"]] = 0.2
+        duplicate_group[COLUMN_NAMES["plv_chip_level_miss_prob"]] = 0.3
+        duplicate_group["Physical - Max Value Per Cost"] = 0.09
+
+        filtered = filter_perfect_information_scenarios(
+            pd.concat([costed, duplicate_group], ignore_index=True)
+        )
+
+        assert set(filtered[COLUMN_NAMES["scenario_id"]]) == {"S5", "S4"}
+
     def test_empty_input_returns_empty(self):
         empty = self._costed_frame().iloc[0:0]
         filtered = filter_perfect_information_scenarios(empty)
@@ -856,15 +870,16 @@ class TestEndToEndWorkflow:
 
     def test_expected_scenario_counts(self, workflow_result):
         _tmp_path, result = workflow_result
-        # 3 mixes: N10-C100 (2 K x 3 inspected = 6 scenarios),
-        # N10-C50_N100-C5 (2x2 K x 3x3 inspected = 36),
-        # N100-C10 (2 K x 3 inspected = 6).
+        # 3 mixes x 2 smuggling shares:
+        # N10-C100 (2 K x 3 inspected = 6 scenarios per share),
+        # N10-C50_N100-C5 (2x2 K x 3x3 inspected = 36 per share),
+        # N100-C10 (2 K x 3 inspected = 6 per share).
         final_df = result["final_df"]
         component_df = result["scenario_component_df"]
-        assert len(final_df) == 48
-        assert component_df[COLUMN_NAMES["scenario_id"]].nunique() == 48
-        # 6*1 + 36*2 + 6*1 component rows.
-        assert len(component_df) == 84
+        assert len(final_df) == 96
+        assert component_df[COLUMN_NAMES["scenario_id"]].nunique() == 96
+        # 2 shares x (6*1 + 36*2 + 6*1) component rows.
+        assert len(component_df) == 168
 
     def test_mixes_used_csv(self, workflow_result):
         tmp_path, _result = workflow_result
@@ -897,15 +912,15 @@ class TestEndToEndWorkflow:
         ]
         assert len(totals) == 2  # one per PLV variant
         assert (
-            totals[COLUMN_NAMES["value_per_cost_scenario_count"]] == 48
+            totals[COLUMN_NAMES["value_per_cost_scenario_count"]] == 96
         ).all()
 
     def test_perfect_information_subset(self, workflow_result):
         _tmp_path, result = workflow_result
         final_df = result["final_df"]
         perfect_df = result["perfect_information_final_df"]
-        # One scenario per (mix, K combo, miss-prob pair): 2 + 4 + 2 groups.
-        assert len(perfect_df) == 8
+        # One scenario per (mix, K combo, smuggling share): 2 x (2 + 4 + 2) groups.
+        assert len(perfect_df) == 16
         assert set(perfect_df[COLUMN_NAMES["scenario_id"]]) <= set(
             final_df[COLUMN_NAMES["scenario_id"]]
         )
