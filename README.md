@@ -176,8 +176,8 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `MIN_DIVERTED_CHIPS`: Minimum diverted-chip count allowed for positive-`K` components of each scenario (`100`), except that `K = 0` and full diversion (`K = N`) are always allowed.
 - `MIN_SCENARIO_DIVERTED_CHIPS`: Minimum total diverted-chip count allowed across a full scenario.
 - `PLV_DISCOUNT_RATE`: Fractional multiplier applied to PLV value.
-- `PHYSICAL_INSPECTION_M_VAL`: Physical-inspection chip-level miss probability.
-- `PLV_M_VAL`: PLV chip-level miss probability.
+- `PHYSICAL_INSPECTION_M`: Physical-inspection chip-level miss probability.
+- `PLV_M`: PLV chip-level miss probability.
 - `MIX_STEP_SIZE`: Number of equal steps used to enumerate cluster-mix shares.
 - `CLUSTER_SIZES`: Candidate cluster-size buckets.
 - `K_VALS`: Candidate diverted-chip counts per cluster.

@@ -18,8 +18,8 @@ from inspection_costs import (
     MIN_DIVERTED_CHIPS,
     MIX_STEPS,
     PARQUET_COMPRESSION,
-    PHYSICAL_INSPECTION_M_VAL,
-    PLV_M_VAL,
+    PHYSICAL_INSPECTION_M,
+    PLV_M,
     ALL_OUTPUT_DIR,
     PERFECT_INFORMATION_OUTPUT_DIR,
     MIXES_USED_CSV_PATH,
@@ -613,8 +613,8 @@ def _build_mix_records(
     total_clusters_in_mix = sum(component[COLUMN_NAMES['number_of_clusters']] for component in mix_components)
     scenario_component_count = len(mix_components)
     share_of_clusters_with_smuggling_vals = list(share_of_clusters_with_smuggling_vals)
-    physical_m_val = PHYSICAL_INSPECTION_M_VAL
-    plv_m_val = PLV_M_VAL
+    physical_m_val = PHYSICAL_INSPECTION_M
+    plv_m_val = PLV_M
     scenario_counter = 0
     unique_k_combos: set[tuple[int, ...]] = set()
     unique_chips_inspected_per_cluster_combos: set[tuple[int, ...]] = set()

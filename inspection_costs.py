@@ -24,8 +24,8 @@ SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS = [0.25]  # Shares of clusters in a scenar
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
 MIN_SCENARIO_DIVERTED_CHIPS = 114_000  # Minimum number of total diverted chips across a full scenario.
 PLV_DISCOUNT_RATE = 0.5  # Fractional multiplier applied to PLV value.
-PHYSICAL_INSPECTION_M_VAL = 0.05  # Failure probability for a physical inspection test.
-PLV_M_VAL = 0.1  # Failure probability for a PLV test.
+PHYSICAL_INSPECTION_M = 0.05  # Failure probability for a physical inspection test.
+PLV_M = 0.1  # Failure probability for a PLV test.
 
 MIX_STEP_SIZE = 7  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1_000, 10_000, 100_000]  # Sizes of clusters to consider in mixes.
@@ -51,7 +51,7 @@ MIX_STEPS = np.linspace(
     1.0,
     num=int(MIX_STEP_SIZE) + 1,
 )
-ALL_M_VALS = sorted({PHYSICAL_INSPECTION_M_VAL, PLV_M_VAL})
+ALL_M_VALS = sorted({PHYSICAL_INSPECTION_M, PLV_M})
 WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "TARGET_CHIPS",
     "NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR",
@@ -63,8 +63,8 @@ WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "MIN_DIVERTED_CHIPS",
     "MIN_SCENARIO_DIVERTED_CHIPS",
     "PLV_DISCOUNT_RATE",
-    "PHYSICAL_INSPECTION_M_VAL",
-    "PLV_M_VAL",
+    "PHYSICAL_INSPECTION_M",
+    "PLV_M",
     "MIX_STEP_SIZE",
     "CLUSTER_SIZES",
     "K_VALS",

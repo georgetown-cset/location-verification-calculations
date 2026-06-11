@@ -56,8 +56,8 @@ from inspection_costs_stage3 import _format_rule_value, _slugify_filename
 
 class TestWorkflowOutput:
     def test_miss_probability_assumptions_are_scalar_constants(self):
-        assert inspection_costs.PHYSICAL_INSPECTION_M_VAL == 0.05
-        assert inspection_costs.PLV_M_VAL == 0.1
+        assert inspection_costs.PHYSICAL_INSPECTION_M == 0.05
+        assert inspection_costs.PLV_M == 0.1
         assert inspection_costs.ALL_M_VALS == [0.05, 0.1]
         assert inspection_costs.SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS == [0.25]
 
@@ -73,8 +73,8 @@ class TestWorkflowOutput:
             "MIN_DIVERTED_CHIPS",
             "MIN_SCENARIO_DIVERTED_CHIPS",
             "PLV_DISCOUNT_RATE",
-            "PHYSICAL_INSPECTION_M_VAL",
-            "PLV_M_VAL",
+            "PHYSICAL_INSPECTION_M",
+            "PLV_M",
             "MIX_STEP_SIZE",
             "CLUSTER_SIZES",
             "K_VALS",
