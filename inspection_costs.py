@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import subprocess
 import sys
+from numbers import Real
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -27,8 +28,8 @@ MIX_STEP_SIZE = 7  # Number of equal steps when iterating through mixes with dif
 CLUSTER_SIZES = [10, 100, 1_000, 10_000, 100_000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 10, 100, 1_000, 10_000, 100_000]  # Diverted chips in a cluster with smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1000]  # Chips inspected per cluster.
-PHYSICAL_INSPECTION_M_VALS = [0.05]  # Failure probability for a physical inspection test.
-PLV_M_VALS = [0.1]  # Failure probability for a PLV test.
+PHYSICAL_INSPECTION_M_VAL = 0.05  # Failure probability for a physical inspection test.
+PLV_M_VAL = 0.1  # Failure probability for a PLV test.
 ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
     # One relevant cluster is present in Epoch AI's Frontier Data Centers but missing from Epoch's GPU Clusters dataset.
     # Relevant cluster means a GPU cluster that is:
@@ -48,7 +49,7 @@ MIX_STEPS = np.linspace(
     1.0,
     num=int(MIX_STEP_SIZE) + 1,
 )
-ALL_M_VALS = sorted(set(PHYSICAL_INSPECTION_M_VALS) | set(PLV_M_VALS))
+ALL_M_VALS = sorted({PHYSICAL_INSPECTION_M_VAL, PLV_M_VAL})
 WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "TARGET_CHIPS",
     "SHARE_OF_CLUSTERS_WITH_SMUGGLING",
@@ -64,8 +65,8 @@ WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "CLUSTER_SIZES",
     "K_VALS",
     "CHIPS_INSPECTED_PER_CLUSTER_VALS",
-    "PHYSICAL_INSPECTION_M_VALS",
-    "PLV_M_VALS",
+    "PHYSICAL_INSPECTION_M_VAL",
+    "PLV_M_VAL",
     "ADDITIONAL_MIN_CLUSTERS_BY_SIZE",
     "MIX_STEPS",
     "ALL_M_VALS",
@@ -113,6 +114,12 @@ def _format_column_preview(columns: Iterable[object], max_columns: int = 8) -> s
     if remaining > 0:
         preview += f", ... (+{remaining} more)"
     return preview
+
+
+def _as_float_list(value: float | Iterable[float]) -> list[float]:
+    if isinstance(value, Real):
+        return [float(value)]
+    return [float(item) for item in value]
 
 
 GPU_CLUSTER_BUCKET_COUNTS_CSV_PATH = Path(OUTPUT_DIR) / "gpu_cluster_bucket_counts.csv"
@@ -348,8 +355,8 @@ def run_inspection_costs_workflow(
     min_scenario_diverted_chips: int = MIN_SCENARIO_DIVERTED_CHIPS,
     chips_inspected_per_cluster_vals: Iterable[int] = CHIPS_INSPECTED_PER_CLUSTER_VALS,
     extra_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
-    physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
-    plv_m_vals: Iterable[float] = PLV_M_VALS,
+    physical_m_vals: float | Iterable[float] = PHYSICAL_INSPECTION_M_VAL,
+    plv_m_vals: float | Iterable[float] = PLV_M_VAL,
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = MIX_STEPS,
     phys_inspection_salary_cost_per_tested_chip: tuple[float, float] = PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP,
@@ -386,8 +393,8 @@ def run_inspection_costs_workflow(
     cluster_sizes = list(cluster_sizes)
     k_vals = list(k_vals)
     chips_inspected_per_cluster_vals = list(chips_inspected_per_cluster_vals)
-    physical_m_vals = list(physical_m_vals)
-    plv_m_vals = list(plv_m_vals)
+    physical_m_vals = _as_float_list(physical_m_vals)
+    plv_m_vals = _as_float_list(plv_m_vals)
     detection_m_vals = sorted(set(physical_m_vals) | set(plv_m_vals))
     steps = list(steps) if steps is not None else None
 

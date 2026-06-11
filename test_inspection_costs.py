@@ -55,6 +55,11 @@ from inspection_costs_stage3 import _format_rule_value, _slugify_filename
 
 
 class TestWorkflowOutput:
+    def test_miss_probability_assumptions_are_scalar_constants(self):
+        assert inspection_costs.PHYSICAL_INSPECTION_M_VAL == 0.05
+        assert inspection_costs.PLV_M_VAL == 0.1
+        assert inspection_costs.ALL_M_VALS == [0.05, 0.1]
+
     def test_stage_output_uses_pipe_section_format(self, capsys):
         _workflow_stage("Stage 1 / Detection Lookup")
 

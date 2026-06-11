@@ -18,8 +18,8 @@ from inspection_costs import (
     MIN_DIVERTED_CHIPS,
     MIX_STEPS,
     PARQUET_COMPRESSION,
-    PHYSICAL_INSPECTION_M_VALS,
-    PLV_M_VALS,
+    PHYSICAL_INSPECTION_M_VAL,
+    PLV_M_VAL,
     ALL_OUTPUT_DIR,
     PERFECT_INFORMATION_OUTPUT_DIR,
     MIXES_USED_CSV_PATH,
@@ -28,6 +28,7 @@ from inspection_costs import (
     SHARE_OF_CLUSTERS_WITH_SMUGGLING,
     MIN_SCENARIO_DIVERTED_CHIPS,
     TARGET_CHIPS,
+    _as_float_list,
     _format_column_preview,
     _workflow_log,
 )
@@ -462,8 +463,8 @@ def build_scenarios(
     k_vals: Iterable[int],
     min_scenario_diverted_chips: int = MIN_SCENARIO_DIVERTED_CHIPS,
     min_clusters_by_size: Optional[dict[int, int]] = None,
-    physical_m_vals: Iterable[float] = PHYSICAL_INSPECTION_M_VALS,
-    plv_m_vals: Iterable[float] = PLV_M_VALS,
+    physical_m_vals: float | Iterable[float] = PHYSICAL_INSPECTION_M_VAL,
+    plv_m_vals: float | Iterable[float] = PLV_M_VAL,
     target_chips: int = TARGET_CHIPS,
     steps: Optional[Iterable[float]] = None,
     mix_data: Optional[list[list[dict[str, int]]]] = None,
@@ -475,8 +476,8 @@ def build_scenarios(
     min_scenario_diverted_chips = int(min_scenario_diverted_chips)
     if min_scenario_diverted_chips < 0:
         raise ValueError("build_scenarios: min_scenario_diverted_chips must be non-negative")
-    physical_m_vals = list(physical_m_vals)
-    plv_m_vals = list(plv_m_vals)
+    physical_m_vals = _as_float_list(physical_m_vals)
+    plv_m_vals = _as_float_list(plv_m_vals)
     _workflow_log(
         "Stage 1 / Scenarios",
         f"Starting with {len(cluster_sizes)} cluster sizes and {len(k_vals)} K values",
