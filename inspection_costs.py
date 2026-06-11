@@ -29,7 +29,7 @@ PLV_M = 0.1  # Failure probability for a PLV test.
 MIX_STEP_SIZE = 7  # Number of equal steps when iterating through mixes with different shares of clusters with smuggling.
 CLUSTER_SIZES = [10, 100, 1_000, 10_000, 100_000]  # Sizes of clusters to consider in mixes.
 K_VALS = [0, 10, 100, 1_000, 10_000, 100_000]  # Diverted chips in a cluster with smuggling.
-SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS = [0.25]  # Shares of clusters in a scenario component assumed to contain smuggling.
+SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS = [0.20, 0.5]  # Shares of clusters in a scenario component assumed to contain smuggling.
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1_000]  # Chips inspected per cluster.
 
 ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
