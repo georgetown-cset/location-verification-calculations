@@ -60,6 +60,29 @@ class TestWorkflowOutput:
         assert inspection_costs.PLV_M_VAL == 0.1
         assert inspection_costs.ALL_M_VALS == [0.05, 0.1]
 
+    def test_workflow_constant_report_order_matches_constants_block(self):
+        assert inspection_costs.WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS == (
+            "TARGET_CHIPS",
+            "NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR",
+            "PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP",
+            "PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION",
+            "PLV_RENTING_COST_PER_TOTAL_CHIP",
+            "PLV_OWNING_COST_PER_TOTAL_CHIP",
+            "SHARE_OF_CLUSTERS_WITH_SMUGGLING",
+            "MIN_DIVERTED_CHIPS",
+            "MIN_SCENARIO_DIVERTED_CHIPS",
+            "PLV_DISCOUNT_RATE",
+            "PHYSICAL_INSPECTION_M_VAL",
+            "PLV_M_VAL",
+            "MIX_STEP_SIZE",
+            "CLUSTER_SIZES",
+            "K_VALS",
+            "CHIPS_INSPECTED_PER_CLUSTER_VALS",
+            "ADDITIONAL_MIN_CLUSTERS_BY_SIZE",
+            "MIX_STEPS",
+            "ALL_M_VALS",
+        )
+
     def test_stage_output_uses_pipe_section_format(self, capsys):
         _workflow_stage("Stage 1 / Detection Lookup")
 

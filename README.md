@@ -167,19 +167,21 @@ Key outputs:
 The main assumptions are defined near the top of `inspection_costs.py`:
 
 - `TARGET_CHIPS`: Total chip population modeled in each scenario.
-- `CLUSTER_SIZES`: Candidate cluster-size buckets.
-- `K_VALS`: Candidate diverted-chip counts per cluster.
-- `MIN_DIVERTED_CHIPS`: Minimum diverted-chip count allowed for positive-`K` components of each scenario (`100`), except that `K = 0` and full diversion (`K = N`) are always allowed.
-- `MIN_SCENARIO_DIVERTED_CHIPS`: Minimum total diverted-chip count allowed across a full scenario.
-- `CHIPS_INSPECTED_PER_CLUSTER_VALS`: Candidate physical-inspection chip counts inspected per cluster.
-- `PHYSICAL_INSPECTION_M_VAL`: Physical-inspection chip-level miss probability.
-- `PLV_M_VAL`: PLV chip-level miss probability.
+- `NUMBER_OF_PHYSICAL_INSPECTIONS_PER_CLUSTER_PER_YEAR`: Annual number of physical inspections performed per cluster.
 - `PHYSICAL_INSPECTION_SALARY_COST_PER_TESTED_CHIP`: Physical-inspection variable cost range.
 - `PHYSICAL_INSPECTION_FIXED_COST_PER_INSPECTION`: Physical-inspection fixed cost range.
 - `PLV_RENTING_COST_PER_TOTAL_CHIP`: PLV renting cost range.
 - `PLV_OWNING_COST_PER_TOTAL_CHIP`: PLV owning cost range.
+- `SHARE_OF_CLUSTERS_WITH_SMUGGLING`: Share of clusters in each scenario component assumed to contain smuggling.
+- `MIN_DIVERTED_CHIPS`: Minimum diverted-chip count allowed for positive-`K` components of each scenario (`100`), except that `K = 0` and full diversion (`K = N`) are always allowed.
+- `MIN_SCENARIO_DIVERTED_CHIPS`: Minimum total diverted-chip count allowed across a full scenario.
 - `PLV_DISCOUNT_RATE`: Fractional multiplier applied to PLV value.
+- `PHYSICAL_INSPECTION_M_VAL`: Physical-inspection chip-level miss probability.
+- `PLV_M_VAL`: PLV chip-level miss probability.
 - `MIX_STEP_SIZE`: Number of equal steps used to enumerate cluster-mix shares.
+- `CLUSTER_SIZES`: Candidate cluster-size buckets.
+- `K_VALS`: Candidate diverted-chip counts per cluster.
+- `CHIPS_INSPECTED_PER_CLUSTER_VALS`: Candidate physical-inspection chip counts inspected per cluster.
 
 ## Dependencies
 
