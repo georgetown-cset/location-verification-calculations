@@ -58,16 +58,9 @@ def _format_rule_value(value: object) -> str:
     return str(value)
 
 
-# Join scenario-level rows with component-level min/max fields used to describe relationship rules.
-def _build_relationship_rule_frame(
-    scenario_df: pd.DataFrame,
-    scenario_component_df: pd.DataFrame,
-) -> pd.DataFrame:
-    if scenario_df.empty:
-        return scenario_df.copy()
-
-    source_df = scenario_df.copy()
-    component_summary = scenario_component_df.loc[
+# Summarize per-scenario component min/max fields used to describe relationship rules.
+def _summarize_components_by_scenario(scenario_component_df: pd.DataFrame) -> pd.DataFrame:
+    return scenario_component_df.loc[
         :,
         [
             COLUMN_NAMES['scenario_id'],
@@ -86,6 +79,20 @@ def _build_relationship_rule_frame(
         component_chips_inspected_per_cluster_min=(COLUMN_NAMES['chips_inspected_per_cluster'], "min"),
         component_chips_inspected_per_cluster_max=(COLUMN_NAMES['chips_inspected_per_cluster'], "max"),
     ).reset_index()
+
+
+# Join scenario-level rows with component-level min/max fields used to describe relationship rules.
+def _build_relationship_rule_frame(
+    scenario_df: pd.DataFrame,
+    scenario_component_df: pd.DataFrame,
+    component_summary: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    if scenario_df.empty:
+        return scenario_df.copy()
+
+    source_df = scenario_df.copy()
+    if component_summary is None:
+        component_summary = _summarize_components_by_scenario(scenario_component_df)
     source_df = source_df.merge(component_summary, on=COLUMN_NAMES['scenario_id'], how='left')
 
     source_df["K Combo Min"] = source_df["component_k_min"]
@@ -316,6 +323,7 @@ def _write_relationship_code_rules_from_dataframes(
     scenario_component_df: pd.DataFrame,
     output_csv_path: Path,
     label: str,
+    component_summary_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     if scenario_df.empty:
@@ -338,7 +346,7 @@ def _write_relationship_code_rules_from_dataframes(
         _workflow_log("Stage 3 / Rules", f"Wrote empty relationship rule summary for {label} to {output_csv_path}", kind="DONE")
         return empty_df
 
-    rule_source_df = _build_relationship_rule_frame(scenario_df, scenario_component_df)
+    rule_source_df = _build_relationship_rule_frame(scenario_df, scenario_component_df, component_summary_df)
     summary_frames: list[pd.DataFrame] = []
     for variant in _plv_variant_specs():
         plv_type = str(variant["plv_type"])
@@ -444,17 +452,15 @@ def _build_relationship_boxplot_dataframe(final_df: pd.DataFrame) -> pd.DataFram
         value_per_cost_df[COLUMN_NAMES['relationship_description']] = value_per_cost_df[COLUMN_NAMES['relationship_code']].map(
             vpc_relationship_labels
         )
-        value_per_cost_df[COLUMN_NAMES['scenario_group']] = value_per_cost_df[COLUMN_NAMES['scenario_type']].map(
-            lambda scenario_type: "Physical Inspection"
-            if scenario_type.startswith("Physical")
-            else next((variant_type for variant_type in plv_types if scenario_type.startswith(variant_type)), plv_type)
-        )
-        value_per_cost_df[COLUMN_NAMES['scenario_variant']] = value_per_cost_df[COLUMN_NAMES['scenario_type']].map(
-            lambda scenario_type: _scenario_variant_label(
-                scenario_type,
-                next((variant_type for variant_type in plv_types if scenario_type.startswith(variant_type)), plv_type),
-            )
-        )
+        # Scenario types take only a handful of values, so map them through precomputed dictionaries.
+        scenario_group_by_type = {}
+        scenario_variant_by_type = {}
+        for scenario_type in value_per_cost_columns:
+            scenario_group, scenario_variant = _scenario_type_group_and_variant(scenario_type, plv_types, plv_type)
+            scenario_group_by_type[scenario_type] = scenario_group
+            scenario_variant_by_type[scenario_type] = scenario_variant
+        value_per_cost_df[COLUMN_NAMES['scenario_group']] = value_per_cost_df[COLUMN_NAMES['scenario_type']].map(scenario_group_by_type)
+        value_per_cost_df[COLUMN_NAMES['scenario_variant']] = value_per_cost_df[COLUMN_NAMES['scenario_type']].map(scenario_variant_by_type)
         value_per_cost_total_df = value_per_cost_df.copy()
         value_per_cost_total_df[COLUMN_NAMES['relationship_code']] = "Total"
         value_per_cost_total_df[COLUMN_NAMES['relationship_description']] = "All relationship categories"
@@ -574,7 +580,7 @@ def _slugify_filename(value: str) -> str:
 
 # Render relationship boxplots from accumulated grouped values and return the image paths.
 def _render_relationship_boxplot_images(
-    grouped_values: dict[tuple[object, ...], list[float]],
+    grouped_values: dict[tuple[object, ...], "list[float] | np.ndarray"],
     output_images_dir: Path,
 ) -> list[Path]:
     output_images_dir.mkdir(parents=True, exist_ok=True)
@@ -632,7 +638,7 @@ def _render_relationship_boxplot_images(
                 if group_key is None:
                     continue
                 values = family_groups[group_key]
-                if not values:
+                if len(values) == 0:
                     continue
                 type_values.append(values)
                 type_positions.append(relationship_index + offsets[type_index])
@@ -673,6 +679,46 @@ def _render_relationship_boxplot_images(
     return saved_paths
 
 
+# Return the (scenario_group, scenario_variant) labels for one melted scenario-type column name.
+def _scenario_type_group_and_variant(scenario_type: str, plv_types: list[str], default_plv_type: str) -> tuple[str, str]:
+    matched_plv_type = next(
+        (variant_type for variant_type in plv_types if scenario_type.startswith(variant_type)),
+        default_plv_type,
+    )
+    scenario_group = "Physical Inspection" if scenario_type.startswith("Physical") else matched_plv_type
+    scenario_variant = _scenario_variant_label(scenario_type, matched_plv_type)
+    return scenario_group, scenario_variant
+
+
+# Compute boxplot summary statistics for one group's value array, skipping NaN like pandas does.
+def _boxplot_stats_from_array(values: np.ndarray) -> dict[str, float]:
+    nan_mask = np.isnan(values)
+    if nan_mask.any():
+        finite_values = values[~nan_mask]
+    else:
+        finite_values = values
+    if finite_values.size == 0:
+        return {
+            "count": 0,
+            "min": float("nan"),
+            "q1": float("nan"),
+            "median": float("nan"),
+            "q3": float("nan"),
+            "max": float("nan"),
+            "mean": float("nan"),
+        }
+    quartiles = np.quantile(finite_values, [0.25, 0.5, 0.75])
+    return {
+        "count": int(finite_values.size),
+        "min": float(finite_values.min()),
+        "q1": float(quartiles[0]),
+        "median": float(quartiles[1]),
+        "q3": float(quartiles[2]),
+        "max": float(finite_values.max()),
+        "mean": float(finite_values.mean()),
+    }
+
+
 def _write_relationship_outputs_from_parquet(
     parquet_path: Path,
     summary_csv_path: Path,
@@ -689,11 +735,9 @@ def _write_relationship_outputs_from_parquet(
         COLUMN_NAMES['bad_records'],
         *LONG_SCENARIO_VALUE_VARS,
     ]
-    grouped_values: dict[tuple[object, ...], list[float]] = {}
-    counts_by_plv_type: dict[str, Counter[str]] = {
-        str(variant["plv_type"]): Counter()
-        for variant in _plv_variant_specs()
-    }
+    plv_types = [str(variant["plv_type"]) for variant in _plv_variant_specs()]
+    counts_by_plv_type: dict[str, Counter[str]] = {plv_type: Counter() for plv_type in plv_types}
+    relationship_labels_by_plv_type = {plv_type: _plv_relationship_labels(plv_type) for plv_type in plv_types}
 
     group_columns = [
         COLUMN_NAMES['metric_family'],
@@ -704,18 +748,60 @@ def _write_relationship_outputs_from_parquet(
         COLUMN_NAMES['scenario_variant'],
         COLUMN_NAMES['scenario_type'],
     ]
-    for batch_df in _iter_parquet_batches(parquet_path, columns=columns, batch_size=batch_size):
-        for variant in _plv_variant_specs():
-            plv_type = str(variant["plv_type"])
-            vpc_relationship_column = f"Physical vs {plv_type} Value Per Cost Relationship"
-            counts_by_plv_type[plv_type].update(batch_df[vpc_relationship_column].astype(str).tolist())
 
-        boxplot_df = _build_relationship_boxplot_dataframe(batch_df)
-        if boxplot_df.empty:
-            continue
-        grouped = boxplot_df.groupby(group_columns, dropna=False)[COLUMN_NAMES['value']]
-        for group_key, values in grouped:
-            grouped_values.setdefault(tuple(group_key), []).extend(values.tolist())
+    # Accumulate raw values per group as numpy chunks; "Total" groups are derived at the end so each
+    # underlying value is held in memory exactly once per (PLV variant, relationship code) split.
+    grouped_value_chunks: dict[tuple[object, ...], list[np.ndarray]] = {}
+    for batch_df in _iter_parquet_batches(parquet_path, columns=columns, batch_size=batch_size):
+        value_per_cost_columns = [column for column in LONG_SCENARIO_VALUE_VARS if column in batch_df.columns]
+        value_arrays = {column: batch_df[column].to_numpy(dtype=np.float64, copy=False) for column in value_per_cost_columns}
+        smuggled_values = batch_df[COLUMN_NAMES['bad_records']].to_numpy(dtype=np.float64)
+        for plv_type in plv_types:
+            vpc_relationship_column = f"Physical vs {plv_type} Value Per Cost Relationship"
+            relationship_values = batch_df[vpc_relationship_column].to_numpy()
+            counts_by_plv_type[plv_type].update(batch_df[vpc_relationship_column].value_counts().to_dict())
+
+            relationship_labels = relationship_labels_by_plv_type[plv_type]
+            for relationship_code in RELATIONSHIP_CODE_ORDER:
+                code_mask = relationship_values == relationship_code
+                if not code_mask.any():
+                    continue
+                relationship_description = relationship_labels[relationship_code]
+                for scenario_type in value_per_cost_columns:
+                    scenario_group, scenario_variant = _scenario_type_group_and_variant(scenario_type, plv_types, plv_type)
+                    group_key = (
+                        "Value Per Cost",
+                        plv_type,
+                        relationship_code,
+                        relationship_description,
+                        scenario_group,
+                        scenario_variant,
+                        scenario_type,
+                    )
+                    grouped_value_chunks.setdefault(group_key, []).append(value_arrays[scenario_type][code_mask])
+                smuggled_group_key = (
+                    SMUGGLED_CHIPS_METRIC_FAMILY,
+                    plv_type,
+                    relationship_code,
+                    relationship_description,
+                    SMUGGLED_CHIPS_SCENARIO_GROUP,
+                    SMUGGLED_CHIPS_SCENARIO_VARIANT,
+                    SMUGGLED_CHIPS_SCENARIO_TYPE,
+                )
+                grouped_value_chunks.setdefault(smuggled_group_key, []).append(smuggled_values[code_mask])
+
+    # Derive "Total" groups by pooling each split's per-code arrays, then materialize one array per group.
+    total_chunks: dict[tuple[object, ...], list[np.ndarray]] = {}
+    for group_key, chunks in grouped_value_chunks.items():
+        total_key = (group_key[0], group_key[1], "Total", "All relationship categories", *group_key[4:])
+        total_chunks.setdefault(total_key, []).extend(chunks)
+    grouped_value_chunks.update(total_chunks)
+    grouped_values: dict[tuple[object, ...], np.ndarray] = {
+        group_key: np.concatenate(grouped_value_chunks[group_key])
+        for group_key in sorted(grouped_value_chunks, key=lambda key: tuple(map(str, key)))
+    }
+    grouped_value_chunks.clear()
+    total_chunks.clear()
 
     relationship_summary_df = _relationship_summary_from_counts(counts_by_plv_type)
     summary_csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -732,7 +818,7 @@ def _write_relationship_outputs_from_parquet(
 
     summary_rows = []
     for group_key, values in grouped_values.items():
-        value_series = pd.Series(values, dtype="float64")
+        stats = _boxplot_stats_from_array(values)
         summary_rows.append(
             {
                 COLUMN_NAMES['metric_family']: group_key[0],
@@ -742,13 +828,13 @@ def _write_relationship_outputs_from_parquet(
                 COLUMN_NAMES['scenario_group']: group_key[4],
                 COLUMN_NAMES['scenario_variant']: group_key[5],
                 COLUMN_NAMES['scenario_type']: group_key[6],
-                COLUMN_NAMES['scenario_count']: int(value_series.count()),
-                "Min": float(value_series.min()),
-                "Q1": float(value_series.quantile(0.25)),
-                "Median": float(value_series.median()),
-                "Q3": float(value_series.quantile(0.75)),
-                "Max": float(value_series.max()),
-                "Mean": float(value_series.mean()),
+                COLUMN_NAMES['scenario_count']: stats["count"],
+                "Min": stats["min"],
+                "Q1": stats["q1"],
+                "Median": stats["median"],
+                "Q3": stats["q3"],
+                "Max": stats["max"],
+                "Mean": stats["mean"],
             }
         )
     relationship_boxplot_df = pd.DataFrame(summary_rows)

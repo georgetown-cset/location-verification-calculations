@@ -63,82 +63,61 @@ def _derive_scenario_summary_from_components(scenario_component_df: pd.DataFrame
         ],
     ].copy()
 
-    grouped = summary_source.groupby(COLUMN_NAMES['scenario_id'], sort=False, observed=True)
-    total_scenarios = grouped.ngroups
+    # Factorize once so sums become bincount operations and "first" fields become single takes.
+    scenario_codes, scenario_id_values = pd.factorize(
+        summary_source[COLUMN_NAMES['scenario_id']], sort=False
+    )
+    total_scenarios = len(scenario_id_values)
     _workflow_log(
         "Stage 2 / Scenario Summary",
         f"Deriving {total_scenarios} scenario summaries from {len(scenario_component_df)} scenario-component rows",
         kind="START",
     )
 
-    # Sum additive quantities while carrying through the identifying mix and parameter-combo fields.
-    scenario_summary = grouped.agg(
-        Mix_ID=(COLUMN_NAMES['mix_id'], "first"),
-        Mix_Description=(COLUMN_NAMES['mix_description'], "first"),
-        Total_Clusters_in_Mix=(COLUMN_NAMES['number_of_clusters'], "sum"),
-        Scenario_Component_Count=(COLUMN_NAMES['number_of_clusters'], "size"),
-        K_Combo=(COLUMN_NAMES['k_combo'], "first"),
-        Chips_Inspected_Per_Cluster_Combo=(COLUMN_NAMES['chips_inspected_per_cluster_combo'], "first"),
-        Share_of_Clusters_with_Smuggling=(COLUMN_NAMES['share_of_clusters_with_smuggling'], "first"),
-        Physical_Inspection_Chip_Level_Miss_Prob=(
-            COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
-            "first",
-        ),
-        PLV_Chip_Level_Miss_Prob=(COLUMN_NAMES['plv_chip_level_miss_prob'], "first"),
-        Total_Tests=(COLUMN_NAMES['total_tests'], "sum"),
-        Total_Component_Chips=(COLUMN_NAMES['total_component_chips'], "sum"),
-        Bad_Records=(COLUMN_NAMES['total_bad_records'], "sum"),
-        Number_of_Clusters_with_Smuggling=(
-            COLUMN_NAMES['number_of_clusters_with_smuggling'],
-            "sum",
-        ),
-        Physical_Inspection_Total_Diverted_Chips_Identified=(
-            COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
-            "sum",
-        ),
-        PLV_Total_Diverted_Chips_Identified=(COLUMN_NAMES['plv_total_diverted_chips_identified'], "sum"),
-    ).reset_index()
-    scenario_summary = scenario_summary.rename(
-        columns={
-            "Mix_ID": COLUMN_NAMES['mix_id'],
-            "Mix_Description": COLUMN_NAMES['mix_description'],
-            "Total_Clusters_in_Mix": COLUMN_NAMES['total_clusters_in_mix'],
-            "Scenario_Component_Count": COLUMN_NAMES['scenario_component_count'],
-            "K_Combo": COLUMN_NAMES['k_combo'],
-            "Chips_Inspected_Per_Cluster_Combo": COLUMN_NAMES['chips_inspected_per_cluster_combo'],
-            "Share_of_Clusters_with_Smuggling": COLUMN_NAMES['share_of_clusters_with_smuggling'],
-            "Physical_Inspection_Chip_Level_Miss_Prob": COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
-            "PLV_Chip_Level_Miss_Prob": COLUMN_NAMES['plv_chip_level_miss_prob'],
-            "Total_Tests": COLUMN_NAMES['total_tests'],
-            "Total_Component_Chips": COLUMN_NAMES['total_component_chips'],
-            "Bad_Records": COLUMN_NAMES['bad_records'],
-            "Number_of_Clusters_with_Smuggling": COLUMN_NAMES['number_of_clusters_with_smuggling'],
-            "Physical_Inspection_Total_Diverted_Chips_Identified": COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
-            "PLV_Total_Diverted_Chips_Identified": COLUMN_NAMES['plv_total_diverted_chips_identified'],
+    # Index of the first component row for each scenario, in order of first appearance.
+    row_count = len(scenario_codes)
+    first_row_index = np.empty(total_scenarios, dtype=np.int64)
+    first_row_index[scenario_codes[::-1]] = np.arange(row_count - 1, -1, -1, dtype=np.int64)
+
+    def _first_values(column_name: str) -> np.ndarray:
+        return summary_source[column_name].to_numpy()[first_row_index]
+
+    def _group_sum(column_name: str, as_integer: bool) -> np.ndarray:
+        sums = np.bincount(
+            scenario_codes,
+            weights=summary_source[column_name].to_numpy(dtype=np.float64),
+            minlength=total_scenarios,
+        )
+        if as_integer:
+            return sums.astype(np.int64)
+        return sums
+
+    scenario_summary = pd.DataFrame(
+        {
+            COLUMN_NAMES['mix_id']: _first_values(COLUMN_NAMES['mix_id']),
+            COLUMN_NAMES['scenario_id']: np.asarray(scenario_id_values, dtype=object),
+            COLUMN_NAMES['mix_description']: _first_values(COLUMN_NAMES['mix_description']),
+            COLUMN_NAMES['total_clusters_in_mix']: _group_sum(COLUMN_NAMES['number_of_clusters'], as_integer=True),
+            COLUMN_NAMES['scenario_component_count']: np.bincount(scenario_codes, minlength=total_scenarios).astype(np.int64),
+            COLUMN_NAMES['k_combo']: _first_values(COLUMN_NAMES['k_combo']),
+            COLUMN_NAMES['chips_inspected_per_cluster_combo']: _first_values(COLUMN_NAMES['chips_inspected_per_cluster_combo']),
+            COLUMN_NAMES['share_of_clusters_with_smuggling']: _first_values(COLUMN_NAMES['share_of_clusters_with_smuggling']),
+            COLUMN_NAMES['physical_inspection_chip_level_miss_prob']: _first_values(COLUMN_NAMES['physical_inspection_chip_level_miss_prob']),
+            COLUMN_NAMES['plv_chip_level_miss_prob']: _first_values(COLUMN_NAMES['plv_chip_level_miss_prob']),
+            COLUMN_NAMES['total_tests']: _group_sum(COLUMN_NAMES['total_tests'], as_integer=True),
+            COLUMN_NAMES['total_component_chips']: _group_sum(COLUMN_NAMES['total_component_chips'], as_integer=True),
+            COLUMN_NAMES['bad_records']: _group_sum(COLUMN_NAMES['total_bad_records'], as_integer=True),
+            COLUMN_NAMES['number_of_clusters_with_smuggling']: _group_sum(
+                COLUMN_NAMES['number_of_clusters_with_smuggling'], as_integer=True
+            ),
+            COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']: _group_sum(
+                COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'], as_integer=False
+            ),
+            COLUMN_NAMES['plv_total_diverted_chips_identified']: _group_sum(
+                COLUMN_NAMES['plv_total_diverted_chips_identified'], as_integer=False
+            ),
         }
     )
-
-    # Reorder columns to the stable scenario-level schema expected by downstream cost calculations.
-    scenario_summary = scenario_summary[
-        [
-            COLUMN_NAMES['mix_id'],
-            COLUMN_NAMES['scenario_id'],
-            COLUMN_NAMES['mix_description'],
-            COLUMN_NAMES['total_clusters_in_mix'],
-            COLUMN_NAMES['scenario_component_count'],
-            COLUMN_NAMES['k_combo'],
-            COLUMN_NAMES['chips_inspected_per_cluster_combo'],
-            COLUMN_NAMES['share_of_clusters_with_smuggling'],
-            COLUMN_NAMES['physical_inspection_chip_level_miss_prob'],
-            COLUMN_NAMES['plv_chip_level_miss_prob'],
-            COLUMN_NAMES['total_tests'],
-            COLUMN_NAMES['total_component_chips'],
-            COLUMN_NAMES['bad_records'],
-            COLUMN_NAMES['number_of_clusters_with_smuggling'],
-            COLUMN_NAMES['physical_inspection_total_diverted_chips_identified'],
-            COLUMN_NAMES['plv_total_diverted_chips_identified'],
-        ]
-    ]
 
     _workflow_log(
         "Stage 2 / Scenario Summary",

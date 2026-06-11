@@ -335,6 +335,7 @@ def _write_relationship_code_rules(
     scenario_component_df: pd.DataFrame,
     output_csv_path: Path,
     label: str,
+    component_summary_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     from inspection_costs_stage1 import _overview_csv_file, _overview_dataframe
     from inspection_costs_stage3 import _write_relationship_code_rules_from_dataframes
@@ -345,6 +346,7 @@ def _write_relationship_code_rules(
         scenario_component_df=scenario_component_df,
         output_csv_path=output_csv_path,
         label=label,
+        component_summary_df=component_summary_df,
     )
     _overview_dataframe(f"{label} relationship code rules", relationship_rules_df)
     _overview_csv_file(output_csv_path, f"{label} relationship code rules CSV")
@@ -546,17 +548,23 @@ def run_inspection_costs_workflow(
     perfect_information_relationship_summary_df, perfect_information_relationship_boxplot_df = relationship_results["perfect-information"]
 
     # Rule summaries need both scenario totals and the component rows that produced those totals.
+    # The per-scenario component summary is shared by both rule outputs, so compute it once.
+    from inspection_costs_stage3 import _summarize_components_by_scenario
+
+    component_summary_df = _summarize_components_by_scenario(scenario_component_df)
     relationship_rules_df = _write_relationship_code_rules(
         scenario_df=final_df,
         scenario_component_df=scenario_component_df,
         output_csv_path=relationship_rules_path,
         label="all",
+        component_summary_df=component_summary_df,
     )
     perfect_information_relationship_rules_df = _write_relationship_code_rules(
         scenario_df=perfect_information_final_df,
         scenario_component_df=scenario_component_df,
         output_csv_path=perfect_information_relationship_rules_path,
         label="perfect-information",
+        component_summary_df=component_summary_df,
     )
     write_workflow_constants_report(Path(WORKFLOW_CONSTANTS_TEXT_PATH))
     elapsed_seconds = time.perf_counter() - start_time

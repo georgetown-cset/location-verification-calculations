@@ -514,7 +514,7 @@ def build_scenarios(
         for mix_number, mix_components in enumerate(mix_data, start=1):
             # Each mix is generated and written independently to keep peak memory use bounded.
             mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
-            mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
+            mix_scenario_component_columns, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
                 mix_components=mix_components,
                 mix_number=mix_number,
                 mix_count=len(mix_data),
@@ -527,7 +527,7 @@ def build_scenarios(
             _write_scenario_dataset_to_parquet(
                 dataset_path=component_dataset_path,
                 mix_id=mix_id,
-                records=mix_scenario_component_records,
+                columns=mix_scenario_component_columns,
             )
             mix_summary_count = mix_scenario_count
             total_scenarios += mix_summary_count
@@ -545,9 +545,9 @@ def build_scenarios(
         return pd.DataFrame(columns=SCENARIO_COLUMNS)
 
     # In-memory mode is primarily useful for tests or small parameter grids.
-    scenario_component_records: list[tuple[object, ...]] = []
+    mix_frames: list[pd.DataFrame] = []
     for mix_number, mix_components in enumerate(mix_data, start=1):
-        mix_scenario_component_records, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
+        mix_scenario_component_columns, mix_scenario_count, mix_scenario_component_count = _build_mix_records(
             mix_components=mix_components,
             mix_number=mix_number,
             mix_count=len(mix_data),
@@ -557,8 +557,10 @@ def build_scenarios(
             share_of_clusters_with_smuggling_vals=share_of_clusters_with_smuggling_vals,
             target_chips=target_chips,
         )
-        if return_dataframe:
-            scenario_component_records.extend(mix_scenario_component_records)
+        if return_dataframe and mix_scenario_component_columns is not None:
+            mix_frames.append(
+                pd.DataFrame({column_name: mix_scenario_component_columns[column_name] for column_name in SCENARIO_COLUMNS})
+            )
         total_scenarios += mix_scenario_count
         total_scenario_component_rows += mix_scenario_component_count
 
@@ -569,33 +571,116 @@ def build_scenarios(
     )
 
     if return_dataframe:
-        return pd.DataFrame.from_records(scenario_component_records, columns=SCENARIO_COLUMNS)
+        if not mix_frames:
+            return pd.DataFrame(columns=SCENARIO_COLUMNS)
+        if len(mix_frames) == 1:
+            return mix_frames[0]
+        return pd.concat(mix_frames, ignore_index=True)
     return pd.DataFrame(columns=SCENARIO_COLUMNS)
 
 
-# Write one mix's scenario-component records as a parquet fragment in the scenario dataset.
+# Write one mix's scenario-component columns as a parquet fragment in the scenario dataset.
 def _write_scenario_dataset_to_parquet(
     *,
     dataset_path: Path,
     mix_id: str,
-    records: list[tuple[object, ...]],
+    columns: Optional[dict[str, np.ndarray]],
 ) -> list[Path]:
     pq, pa = _import_pyarrow_parquet()
     _ensure_scenarios_dataset_path(dataset_path)
     mix_parquet_path = _mix_parquet_path(dataset_path, mix_id)
     _clear_existing_mix_files(mix_parquet_path)
-    if not records:
+    if not columns:
         table = _empty_arrow_table(pa, _final_scenario_component_arrow_schema(pa))
         pq.write_table(table, mix_parquet_path, compression=PARQUET_COMPRESSION)
         return [mix_parquet_path]
 
     schema = _final_scenario_component_arrow_schema(pa)
-    table = _records_to_arrow_table(records, pa, schema)
+    table = _columns_to_arrow_table(columns, pa, schema)
     pq.write_table(table, mix_parquet_path, compression=PARQUET_COMPRESSION)
     return [mix_parquet_path]
 
 
-# Expand one cluster mix into all scenario-component records and count the scenario rows produced.
+# Build cached cross-product arrays for one tuple of per-component inspected-chip option lists.
+def _build_inspected_combo_cache(
+    signature: tuple[tuple[int, ...], ...],
+    *,
+    cluster_sizes_arr: np.ndarray,
+    num_clusters_arr: np.ndarray,
+    num_smug_arr: np.ndarray,
+    component_chips_arr: np.ndarray,
+) -> dict[str, object]:
+    component_count = len(signature)
+    option_arrays = [np.asarray(options, dtype=np.int64) for options in signature]
+
+    # Enumerate the inspected-chip cross product in itertools.product order (last component fastest).
+    index_grids = np.meshgrid(*[np.arange(options.size) for options in option_arrays], indexing="ij")
+    option_index_grid = np.stack([grid.reshape(-1) for grid in index_grids], axis=1)
+    combo_count = option_index_grid.shape[0]
+    inspected_combos = np.stack(
+        [option_arrays[component][option_index_grid[:, component]] for component in range(component_count)],
+        axis=1,
+    )
+
+    combo_rows = inspected_combos.tolist()
+    inspected_combo_strs = ["-".join(map(str, row)) for row in combo_rows]
+
+    inspected_flat = inspected_combos.reshape(-1)
+    num_clusters_flat = np.tile(num_clusters_arr, combo_count)
+    return {
+        "combo_count": combo_count,
+        "inspected_combo_tuples": [tuple(row) for row in combo_rows],
+        "inspected_combo_strs": inspected_combo_strs,
+        "inspected_flat": inspected_flat,
+        "option_index_flat": option_index_grid.reshape(-1),
+        "component_index_flat": np.tile(np.arange(component_count, dtype=np.int64), combo_count),
+        "cluster_size_flat": np.tile(cluster_sizes_arr, combo_count),
+        "num_clusters_flat": num_clusters_flat,
+        "num_smug_flat": np.tile(num_smug_arr, combo_count),
+        "total_component_chips_flat": np.tile(component_chips_arr, combo_count),
+        "total_tests_flat": num_clusters_flat * inspected_flat,
+        "inspected_combo_str_flat": np.repeat(np.array(inspected_combo_strs, dtype=object), component_count),
+    }
+
+
+# Gather the per-option detection metrics for one component and diverted-chip count.
+def _component_detection_vectors(
+    detection_grouped: dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]],
+    cluster_size: int,
+    k_val: int,
+    options: tuple[int, ...],
+    physical_m_val: float,
+    plv_m_val: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    detection_info_by_i = detection_grouped[(cluster_size, k_val)]
+    physical_p = np.empty(len(options), dtype=np.float64)
+    physical_identified = np.empty(len(options), dtype=np.float64)
+    plv_p = np.empty(len(options), dtype=np.float64)
+    plv_identified = np.empty(len(options), dtype=np.float64)
+    for option_index, chips_inspected_per_cluster in enumerate(options):
+        detection_info_by_m = detection_info_by_i.get(int(chips_inspected_per_cluster), {})
+        physical_info = detection_info_by_m.get(float(physical_m_val))
+        if physical_info is None:
+            raise ValueError(
+                "Missing physical-inspection detection lookup row for "
+                f"cluster_size={cluster_size}, k={k_val}, "
+                f"chips_inspected_per_cluster={chips_inspected_per_cluster}, m={physical_m_val}"
+            )
+        plv_info = detection_info_by_m.get(float(plv_m_val))
+        if plv_info is None:
+            raise ValueError(
+                "Missing PLV detection lookup row for "
+                f"cluster_size={cluster_size}, k={k_val}, "
+                f"chips_inspected_per_cluster={chips_inspected_per_cluster}, m={plv_m_val}"
+            )
+        physical_p[option_index] = physical_info[0]
+        physical_identified[option_index] = physical_info[1]
+        plv_p[option_index] = plv_info[2]
+        plv_identified[option_index] = plv_info[3]
+    return physical_p, physical_identified, plv_p, plv_identified
+
+
+# Expand one cluster mix into per-column scenario-component arrays and count the scenario rows produced.
 def _build_mix_records(
     *,
     mix_components: list[dict[str, int]],
@@ -606,8 +691,7 @@ def _build_mix_records(
     min_scenario_diverted_chips: int,
     share_of_clusters_with_smuggling_vals: Iterable[float],
     target_chips: int,
-) -> tuple[list[tuple[object, ...]], int, int]:
-    scenario_component_records: list[tuple[object, ...]] = []
+) -> tuple[Optional[dict[str, np.ndarray]], int, int]:
     mix_id = mix_components[0][COLUMN_NAMES['mix_id']]
     mix_description = build_mix_description(mix_components)
     total_clusters_in_mix = sum(component[COLUMN_NAMES['number_of_clusters']] for component in mix_components)
@@ -616,11 +700,13 @@ def _build_mix_records(
     physical_m_val = PHYSICAL_INSPECTION_M
     plv_m_val = PLV_M
     scenario_counter = 0
+    total_row_count = 0
     unique_k_combos: set[tuple[int, ...]] = set()
     unique_chips_inspected_per_cluster_combos: set[tuple[int, ...]] = set()
+    column_chunks: dict[str, list[np.ndarray]] = {column_name: [] for column_name in SCENARIO_COLUMNS}
 
     for share_of_clusters_with_smuggling in share_of_clusters_with_smuggling_vals:
-        # Component metadata packages cluster size, cluster count, smuggling count, weight, and valid K options.
+        # Component metadata packages cluster size, cluster count, smuggling count, and valid K options.
         component_data = [
             (
                 component[COLUMN_NAMES['cluster_size']],
@@ -629,7 +715,6 @@ def _build_mix_records(
                     component[COLUMN_NAMES['number_of_clusters']],
                     share_of_clusters_with_smuggling,
                 ),
-                (component[COLUMN_NAMES['cluster_size']] * component[COLUMN_NAMES['number_of_clusters']] / target_chips) * 100,
                 k_options_by_cluster_size[component[COLUMN_NAMES['cluster_size']]],
             )
             for component in mix_components
@@ -637,17 +722,25 @@ def _build_mix_records(
         k_options_per_component = [
             [
                 k_val
-                for k_val in component[4]
+                for k_val in component[3]
                 if k_val == 0 or k_val >= MIN_DIVERTED_CHIPS or k_val == component[0]
             ]
             for component in component_data
         ]
+        cluster_sizes_arr = np.array([component[0] for component in component_data], dtype=np.int64)
+        num_clusters_arr = np.array([component[1] for component in component_data], dtype=np.int64)
+        num_smug_arr = np.array([component[2] for component in component_data], dtype=np.int64)
+        component_chips_arr = cluster_sizes_arr * num_clusters_arr
+
+        # Inspected-option cross products and detection vectors repeat heavily across K combos, so cache them.
+        inspected_cache_by_signature: dict[tuple[tuple[int, ...], ...], dict[str, object]] = {}
+        detection_vectors_by_component_k: dict[tuple[int, int], tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
 
         # A scenario chooses one diverted-chip count for each component in the mix.
-        for combo_count, k_combo in enumerate(itertools.product(*k_options_per_component), start=1):
+        for k_combo in itertools.product(*k_options_per_component):
             scenario_diverted_chips = sum(
                 int(k_val) * int(num_clusters_with_smuggling)
-                for (_cluster_size_comp, _num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val
+                for (_cluster_size_comp, _num_clusters_comp, num_clusters_with_smuggling, _), k_val
                 in zip(component_data, k_combo)
             )
             if scenario_diverted_chips < min_scenario_diverted_chips:
@@ -655,7 +748,7 @@ def _build_mix_records(
             k_combo = tuple(int(k_val) for k_val in k_combo)
 
             chips_inspected_per_cluster_options_per_component: list[tuple[int, ...]] = []
-            for (cluster_size_comp, _num_clusters_comp, _num_clusters_with_smuggling, _weight_pct, _), k_val in zip(component_data, k_combo):
+            for (cluster_size_comp, _num_clusters_comp, _num_clusters_with_smuggling, _), k_val in zip(component_data, k_combo):
                 # Inspected-chip options come from the detection table and are keyed by the selected cluster size and K.
                 chips_inspected_per_cluster_options = detection_grouped.get((cluster_size_comp, int(k_val)), {})
                 if not chips_inspected_per_cluster_options:
@@ -663,66 +756,93 @@ def _build_mix_records(
                 chips_inspected_per_cluster_options_per_component.append(tuple(sorted(chips_inspected_per_cluster_options)))
             else:
                 unique_k_combos.add(k_combo)
-                # Once every component has valid K and inspected-chip options, cross product them into concrete scenarios.
-                for chips_inspected_per_cluster_combo_count, chips_inspected_per_cluster_combo in enumerate(itertools.product(*chips_inspected_per_cluster_options_per_component), start=1):
-                    chips_inspected_per_cluster_combo = tuple(int(value) for value in chips_inspected_per_cluster_combo)
-                    unique_chips_inspected_per_cluster_combos.add(chips_inspected_per_cluster_combo)
-                    scenario_id = (
-                        f"{mix_id}_s{share_of_clusters_with_smuggling}_K{'-'.join(map(str, k_combo))}"
-                        f"_i{'-'.join(map(str, chips_inspected_per_cluster_combo))}"
+                signature = tuple(chips_inspected_per_cluster_options_per_component)
+                inspected_cache = inspected_cache_by_signature.get(signature)
+                if inspected_cache is None:
+                    inspected_cache = _build_inspected_combo_cache(
+                        signature,
+                        cluster_sizes_arr=cluster_sizes_arr,
+                        num_clusters_arr=num_clusters_arr,
+                        num_smug_arr=num_smug_arr,
+                        component_chips_arr=component_chips_arr,
                     )
-                    flat_rows: list[tuple[object, ...]] = []
+                    inspected_cache_by_signature[signature] = inspected_cache
+                    unique_chips_inspected_per_cluster_combos.update(inspected_cache["inspected_combo_tuples"])
 
-                    # Store one component row per scenario component; scenario-level totals are computed later.
-                    for (cluster_size_comp, num_clusters_comp, num_clusters_with_smuggling, _weight_pct, _), k_val, chips_inspected_per_cluster in zip(component_data, k_combo, chips_inspected_per_cluster_combo):
-                        detection_info_by_m = detection_grouped.get((cluster_size_comp, k_val), {}).get(int(chips_inspected_per_cluster), {})
-                        physical_info = detection_info_by_m.get(float(physical_m_val))
-                        if physical_info is None:
-                            raise ValueError(
-                                "Missing physical-inspection detection lookup row for "
-                                f"cluster_size={cluster_size_comp}, k={k_val}, "
-                                f"chips_inspected_per_cluster={chips_inspected_per_cluster}, m={physical_m_val}"
-                            )
-                        plv_info = detection_info_by_m.get(float(plv_m_val))
-                        if plv_info is None:
-                            raise ValueError(
-                                "Missing PLV detection lookup row for "
-                                f"cluster_size={cluster_size_comp}, k={k_val}, "
-                                f"chips_inspected_per_cluster={chips_inspected_per_cluster}, m={plv_m_val}"
-                            )
-                        physical_p_detect, physical_identified_per_cluster, _, _ = physical_info
-                        _, _, plv_p_detect, plv_identified_per_cluster = plv_info
-                        flat_rows.append(
-                            (
-                                mix_id,
-                                scenario_id,
-                                mix_description,
-                                total_clusters_in_mix,
-                                num_clusters_comp * chips_inspected_per_cluster,
-                                num_clusters_comp * cluster_size_comp,
-                                scenario_component_count,
-                                "-".join(map(str, k_combo)),
-                                "-".join(map(str, chips_inspected_per_cluster_combo)),
-                                share_of_clusters_with_smuggling,
-                                cluster_size_comp,
-                                k_val,
-                                k_val * num_clusters_with_smuggling,
-                                num_clusters_comp,
-                                num_clusters_with_smuggling,
-                                chips_inspected_per_cluster,
-                                physical_m_val,
-                                physical_p_detect,
-                                physical_identified_per_cluster,
-                                plv_m_val,
-                                plv_p_detect,
-                                plv_identified_per_cluster,
-                                physical_identified_per_cluster * num_clusters_with_smuggling,
-                                plv_identified_per_cluster * num_clusters_with_smuggling,
-                            )
+                # Look up the four detection metrics for every component option, padded into one matrix per metric.
+                max_option_count = max(len(options) for options in signature)
+                physical_p_matrix = np.zeros((scenario_component_count, max_option_count), dtype=np.float64)
+                physical_identified_matrix = np.zeros_like(physical_p_matrix)
+                plv_p_matrix = np.zeros_like(physical_p_matrix)
+                plv_identified_matrix = np.zeros_like(physical_p_matrix)
+                for component_index, ((cluster_size_comp, _num_clusters_comp, _num_smug_comp, _), k_val, options) in enumerate(
+                    zip(component_data, k_combo, signature)
+                ):
+                    vectors = detection_vectors_by_component_k.get((component_index, k_val))
+                    if vectors is None:
+                        vectors = _component_detection_vectors(
+                            detection_grouped,
+                            cluster_size_comp,
+                            k_val,
+                            options,
+                            physical_m_val,
+                            plv_m_val,
                         )
+                        detection_vectors_by_component_k[(component_index, k_val)] = vectors
+                    physical_p_matrix[component_index, : len(options)] = vectors[0]
+                    physical_identified_matrix[component_index, : len(options)] = vectors[1]
+                    plv_p_matrix[component_index, : len(options)] = vectors[2]
+                    plv_identified_matrix[component_index, : len(options)] = vectors[3]
 
-                    scenario_counter += 1
-                    scenario_component_records.extend(flat_rows)
+                component_index_flat = inspected_cache["component_index_flat"]
+                option_index_flat = inspected_cache["option_index_flat"]
+                physical_p_flat = physical_p_matrix[component_index_flat, option_index_flat]
+                physical_identified_flat = physical_identified_matrix[component_index_flat, option_index_flat]
+                plv_p_flat = plv_p_matrix[component_index_flat, option_index_flat]
+                plv_identified_flat = plv_identified_matrix[component_index_flat, option_index_flat]
+
+                combo_count = inspected_cache["combo_count"]
+                row_count = combo_count * scenario_component_count
+                num_smug_flat = inspected_cache["num_smug_flat"]
+                k_combo_str = "-".join(map(str, k_combo))
+                k_arr = np.array(k_combo, dtype=np.int64)
+                scenario_id_prefix = f"{mix_id}_s{share_of_clusters_with_smuggling}_K{k_combo_str}"
+                scenario_ids = np.array(
+                    [f"{scenario_id_prefix}_i{inspected_str}" for inspected_str in inspected_cache["inspected_combo_strs"]],
+                    dtype=object,
+                )
+
+                chunk = {
+                    COLUMN_NAMES['mix_id']: np.full(row_count, mix_id, dtype=object),
+                    COLUMN_NAMES['scenario_id']: np.repeat(scenario_ids, scenario_component_count),
+                    COLUMN_NAMES['mix_description']: np.full(row_count, mix_description, dtype=object),
+                    COLUMN_NAMES['total_clusters_in_mix']: np.full(row_count, total_clusters_in_mix, dtype=np.int64),
+                    COLUMN_NAMES['total_tests']: inspected_cache["total_tests_flat"],
+                    COLUMN_NAMES['total_component_chips']: inspected_cache["total_component_chips_flat"],
+                    COLUMN_NAMES['scenario_component_count']: np.full(row_count, scenario_component_count, dtype=np.int64),
+                    COLUMN_NAMES['k_combo']: np.full(row_count, k_combo_str, dtype=object),
+                    COLUMN_NAMES['chips_inspected_per_cluster_combo']: inspected_cache["inspected_combo_str_flat"],
+                    COLUMN_NAMES['share_of_clusters_with_smuggling']: np.full(row_count, share_of_clusters_with_smuggling, dtype=np.float64),
+                    COLUMN_NAMES['cluster_size']: inspected_cache["cluster_size_flat"],
+                    COLUMN_NAMES['bad_records']: np.tile(k_arr, combo_count),
+                    COLUMN_NAMES['total_bad_records']: np.tile(k_arr * num_smug_arr, combo_count),
+                    COLUMN_NAMES['number_of_clusters']: inspected_cache["num_clusters_flat"],
+                    COLUMN_NAMES['number_of_clusters_with_smuggling']: num_smug_flat,
+                    COLUMN_NAMES['chips_inspected_per_cluster']: inspected_cache["inspected_flat"],
+                    COLUMN_NAMES['physical_inspection_chip_level_miss_prob']: np.full(row_count, physical_m_val, dtype=np.float64),
+                    COLUMN_NAMES['physical_inspection_p_detect']: physical_p_flat,
+                    COLUMN_NAMES['physical_inspection_diverted_chips_identified']: physical_identified_flat,
+                    COLUMN_NAMES['plv_chip_level_miss_prob']: np.full(row_count, plv_m_val, dtype=np.float64),
+                    COLUMN_NAMES['plv_p_detect']: plv_p_flat,
+                    COLUMN_NAMES['plv_diverted_chips_identified']: plv_identified_flat,
+                    COLUMN_NAMES['physical_inspection_total_diverted_chips_identified']: physical_identified_flat * num_smug_flat,
+                    COLUMN_NAMES['plv_total_diverted_chips_identified']: plv_identified_flat * num_smug_flat,
+                }
+                for column_name, values in chunk.items():
+                    column_chunks[column_name].append(values)
+
+                scenario_counter += combo_count
+                total_row_count += row_count
 
     _workflow_log(
         "Stage 1 / Scenarios",
@@ -730,13 +850,19 @@ def _build_mix_records(
             f"{mix_id} ({mix_number} / {mix_count}):\n"
             f"  unique K combinations={len(unique_k_combos)}\n"
             f"  unique chips_inspected_per_cluster combinations={len(unique_chips_inspected_per_cluster_combos)}\n"
-            f"  total scenario component rows={len(scenario_component_records)}\n"
+            f"  total scenario component rows={total_row_count}\n"
             f"  total scenarios={scenario_counter}"
         ),
         kind="STEP",
     )
 
-    return scenario_component_records, scenario_counter, len(scenario_component_records)
+    if total_row_count == 0:
+        return None, scenario_counter, 0
+    mix_columns = {
+        column_name: np.concatenate(chunks) if len(chunks) > 1 else chunks[0]
+        for column_name, chunks in column_chunks.items()
+    }
+    return mix_columns, scenario_counter, total_row_count
 
 
 # Remove any existing parquet fragments for a mix before writing replacement records.
@@ -795,9 +921,12 @@ def _mix_id_shard(safe_mix_id: str) -> str:
     return first_component or "unknown"
 
 
-# Convert tuple records into an Arrow table using the provided schema.
-def _records_to_arrow_table(records: list[tuple[object, ...]], pa, schema):
-    return pa.Table.from_arrays([pa.array(values) for values in zip(*records)], schema=schema)
+# Convert per-column numpy arrays into an Arrow table using the provided schema.
+def _columns_to_arrow_table(columns: dict[str, np.ndarray], pa, schema):
+    return pa.Table.from_arrays(
+        [pa.array(columns[field.name], type=field.type) for field in schema],
+        schema=schema,
+    )
 
 
 # Import pyarrow lazily so callers using only in-memory paths do not need it at import time.

@@ -404,6 +404,98 @@ class TestBuildScenarios:
                 output_parquet_path=None,
             )
 
+    def test_in_memory_and_parquet_paths_produce_identical_rows(self, tmp_path):
+        lookup = build_detection_lookup_table(
+            cluster_sizes=[10, 100],
+            K_vals=[0, 10, 100],
+            chips_inspected_per_cluster_vals=[0, 1, 10],
+            m_vals=[0.05, 0.1],
+            parquet_path=None,
+        )
+        kwargs = dict(
+            cluster_sizes=[10, 100],
+            detection_lookup_table=lookup,
+            k_vals=[0, 10, 100],
+            min_scenario_diverted_chips=0,
+            target_chips=1000,
+            steps=[0.0, 0.5, 1.0],
+        )
+        in_memory_df = build_scenarios(output_parquet_path=None, **kwargs)
+        parquet_df = build_scenarios(
+            output_parquet_path=tmp_path / "scenario_components",
+            return_dataframe=True,
+            **kwargs,
+        )
+
+        sort_columns = [COLUMN_NAMES["scenario_id"], COLUMN_NAMES["cluster_size"]]
+        pd.testing.assert_frame_equal(
+            in_memory_df.sort_values(sort_columns).reset_index(drop=True),
+            parquet_df.sort_values(sort_columns).reset_index(drop=True),
+        )
+
+    def test_component_rows_match_detection_lookup_values(self):
+        """Detection metrics on multi-component scenarios must align with the lookup table."""
+        lookup = build_detection_lookup_table(
+            cluster_sizes=[10, 100],
+            K_vals=[0, 10, 100],
+            chips_inspected_per_cluster_vals=[0, 1, 10],
+            m_vals=[0.05, 0.1],
+            parquet_path=None,
+        )
+        df = build_scenarios(
+            cluster_sizes=[10, 100],
+            detection_lookup_table=lookup,
+            k_vals=[0, 10, 100],
+            min_scenario_diverted_chips=0,
+            target_chips=1000,
+            steps=[0.0, 0.5, 1.0],
+            output_parquet_path=None,
+        )
+        lookup_physical = {
+            (row[COLUMN_NAMES["cluster_size"]], row[COLUMN_NAMES["bad_records"]], row[COLUMN_NAMES["chips_inspected_per_cluster"]]): (
+                row[COLUMN_NAMES["physical_inspection_p_detect"]],
+                row[COLUMN_NAMES["physical_inspection_diverted_chips_identified"]],
+            )
+            for _, row in lookup[lookup[COLUMN_NAMES["chip_level_miss_prob"]] == 0.05].iterrows()
+        }
+        lookup_plv = {
+            (row[COLUMN_NAMES["cluster_size"]], row[COLUMN_NAMES["bad_records"]], row[COLUMN_NAMES["chips_inspected_per_cluster"]]): (
+                row[COLUMN_NAMES["plv_p_detect"]],
+                row[COLUMN_NAMES["plv_diverted_chips_identified"]],
+            )
+            for _, row in lookup[lookup[COLUMN_NAMES["chip_level_miss_prob"]] == 0.1].iterrows()
+        }
+        multi_component = df[df[COLUMN_NAMES["scenario_component_count"]] == 2]
+        assert not multi_component.empty
+        for _, row in df.iterrows():
+            key = (
+                row[COLUMN_NAMES["cluster_size"]],
+                row[COLUMN_NAMES["bad_records"]],
+                row[COLUMN_NAMES["chips_inspected_per_cluster"]],
+            )
+            expected_physical = lookup_physical[key]
+            expected_plv = lookup_plv[key]
+            assert row[COLUMN_NAMES["physical_inspection_p_detect"]] == expected_physical[0]
+            assert row[COLUMN_NAMES["physical_inspection_diverted_chips_identified"]] == expected_physical[1]
+            assert row[COLUMN_NAMES["plv_p_detect"]] == expected_plv[0]
+            assert row[COLUMN_NAMES["plv_diverted_chips_identified"]] == expected_plv[1]
+            assert row[
+                COLUMN_NAMES["physical_inspection_total_diverted_chips_identified"]
+            ] == expected_physical[1] * row[COLUMN_NAMES["number_of_clusters_with_smuggling"]]
+            assert row[
+                COLUMN_NAMES["plv_total_diverted_chips_identified"]
+            ] == expected_plv[1] * row[COLUMN_NAMES["number_of_clusters_with_smuggling"]]
+
+    def test_in_memory_dataframe_dtypes(self):
+        df = self._build(min_scenario_diverted_chips=0)
+        assert df[COLUMN_NAMES["mix_id"]].dtype == object
+        assert df[COLUMN_NAMES["scenario_id"]].dtype == object
+        assert df[COLUMN_NAMES["cluster_size"]].dtype == np.int64
+        assert df[COLUMN_NAMES["total_tests"]].dtype == np.int64
+        assert df[COLUMN_NAMES["total_bad_records"]].dtype == np.int64
+        assert df[COLUMN_NAMES["share_of_clusters_with_smuggling"]].dtype == np.float64
+        assert df[COLUMN_NAMES["physical_inspection_p_detect"]].dtype == np.float64
+
     def test_return_dataframe_reads_generated_parquet_dataset(self, tmp_path, monkeypatch):
         lookup = build_detection_lookup_table(
             cluster_sizes=[10],
@@ -529,6 +621,35 @@ class TestDeriveScenarioSummary:
         assert COLUMN_NAMES["scenario_id"] in summary.columns
         assert COLUMN_NAMES["share_of_clusters_with_smuggling"] in summary.columns
         assert COLUMN_NAMES["total_tests"] in summary.columns
+
+    def test_non_contiguous_component_rows_aggregate_correctly(self):
+        """Interleaved scenario rows must aggregate exactly like contiguous ones."""
+        frame = _component_frame()
+        shuffled = frame.iloc[[0, 2, 1]].reset_index(drop=True)
+
+        summary = _derive_scenario_summary_from_components(shuffled)
+
+        # Order follows first appearance of each scenario id.
+        assert list(summary[COLUMN_NAMES["scenario_id"]]) == ["S1", "S2"]
+        s1 = summary.loc[summary[COLUMN_NAMES["scenario_id"]] == "S1"].iloc[0]
+        assert s1[COLUMN_NAMES["total_clusters_in_mix"]] == 55
+        assert s1[COLUMN_NAMES["scenario_component_count"]] == 2
+        assert s1[COLUMN_NAMES["bad_records"]] == 230
+        assert s1[
+            COLUMN_NAMES["physical_inspection_total_diverted_chips_identified"]
+        ] == pytest.approx(10.0)
+
+    def test_summary_dtypes_preserve_integer_columns(self):
+        summary = _derive_scenario_summary_from_components(_component_frame())
+        assert summary[COLUMN_NAMES["total_clusters_in_mix"]].dtype == np.int64
+        assert summary[COLUMN_NAMES["scenario_component_count"]].dtype == np.int64
+        assert summary[COLUMN_NAMES["total_tests"]].dtype == np.int64
+        assert summary[COLUMN_NAMES["total_component_chips"]].dtype == np.int64
+        assert summary[COLUMN_NAMES["bad_records"]].dtype == np.int64
+        assert summary[COLUMN_NAMES["number_of_clusters_with_smuggling"]].dtype == np.int64
+        assert summary[
+            COLUMN_NAMES["physical_inspection_total_diverted_chips_identified"]
+        ].dtype == np.float64
 
 
 class TestClassifyIntervalRelationship:
@@ -764,6 +885,137 @@ class TestStage3Helpers:
             }
 
 
+class TestStreamingRelationshipOutputs:
+    def _costed_frame(self):
+        rng = np.random.default_rng(7)
+        scenario_count = 25
+        codes_renting = list("abcdef") * 5
+        codes_owning = list("fedcba") * 5
+        rows = []
+        for index in range(scenario_count):
+            rows.append(
+                {
+                    COLUMN_NAMES["mix_id"]: f"Mix{index % 3}",
+                    COLUMN_NAMES["scenario_id"]: f"Scenario{index}",
+                    "Physical vs PLV Renting Value Per Cost Relationship": codes_renting[index % len(codes_renting)],
+                    "Physical vs PLV Owning Value Per Cost Relationship": codes_owning[index % len(codes_owning)],
+                    COLUMN_NAMES["bad_records"]: int(rng.integers(1, 1000)),
+                    "Physical - Min Value Per Cost": float(rng.uniform(0, 1)),
+                    "Physical - Max Value Per Cost": float(rng.uniform(1, 2)),
+                    "PLV Renting - Min Value Per Cost": float(rng.uniform(0, 1)),
+                    "PLV Renting - Max Value Per Cost": float(rng.uniform(1, 2)),
+                    "PLV Owning - Min Value Per Cost": float(rng.uniform(0, 1)),
+                    "PLV Owning - Max Value Per Cost": float(rng.uniform(1, 2)),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def test_streaming_summary_matches_reference_implementation(self, tmp_path):
+        """The batched numpy accumulation must reproduce the melt/groupby reference output."""
+        costed_df = self._costed_frame()
+        parquet_path = tmp_path / "costed.parquet"
+        costed_df.to_parquet(parquet_path, index=False)
+
+        _summary_df, streaming_boxplot_df = (
+            inspection_costs_stage3._write_relationship_outputs_from_parquet(
+                parquet_path=parquet_path,
+                summary_csv_path=tmp_path / "summary.csv",
+                boxplot_csv_path=tmp_path / "boxplot.csv",
+                output_images_dir=tmp_path / "images",
+                batch_size=7,  # force several partial batches
+            )
+        )
+
+        reference_boxplot_df = inspection_costs_stage3._summarize_relationship_boxplot_dataframe(
+            inspection_costs_stage3._build_relationship_boxplot_dataframe(costed_df)
+        )
+
+        pd.testing.assert_frame_equal(
+            streaming_boxplot_df.reset_index(drop=True),
+            reference_boxplot_df.reset_index(drop=True),
+        )
+
+    def test_streaming_relationship_counts(self, tmp_path):
+        costed_df = self._costed_frame()
+        parquet_path = tmp_path / "costed.parquet"
+        costed_df.to_parquet(parquet_path, index=False)
+
+        summary_df, _boxplot_df = (
+            inspection_costs_stage3._write_relationship_outputs_from_parquet(
+                parquet_path=parquet_path,
+                summary_csv_path=tmp_path / "summary.csv",
+                boxplot_csv_path=tmp_path / "boxplot.csv",
+                output_images_dir=tmp_path / "images",
+                batch_size=4,
+            )
+        )
+
+        for plv_type in ("PLV Renting", "PLV Owning"):
+            column = f"Physical vs {plv_type} Value Per Cost Relationship"
+            expected_counts = costed_df[column].value_counts()
+            plv_summary = summary_df[summary_df[COLUMN_NAMES["plv_type"]] == plv_type]
+            for code, expected_count in expected_counts.items():
+                code_rows = plv_summary[plv_summary[COLUMN_NAMES["relationship_code"]] == code]
+                assert (
+                    code_rows[COLUMN_NAMES["value_per_cost_scenario_count"]] == expected_count
+                ).all()
+            total_rows = plv_summary[plv_summary[COLUMN_NAMES["relationship_code"]] == "Total"]
+            assert (
+                total_rows[COLUMN_NAMES["value_per_cost_scenario_count"]] == len(costed_df)
+            ).all()
+
+    def test_boxplot_stats_from_array_matches_pandas(self):
+        values = np.array([3.0, np.nan, 1.0, 7.0, 5.0, np.nan, 2.0])
+        stats = inspection_costs_stage3._boxplot_stats_from_array(values)
+        series = pd.Series(values)
+        assert stats["count"] == int(series.count())
+        assert stats["min"] == series.min()
+        assert stats["q1"] == series.quantile(0.25)
+        assert stats["median"] == series.median()
+        assert stats["q3"] == series.quantile(0.75)
+        assert stats["max"] == series.max()
+        assert stats["mean"] == series.mean()
+
+
+class TestRelationshipRuleComponentSummaryReuse:
+    def test_precomputed_component_summary_matches_inline_computation(self, tmp_path):
+        lookup = build_detection_lookup_table(
+            cluster_sizes=[10, 100],
+            K_vals=[0, 10, 100],
+            chips_inspected_per_cluster_vals=[0, 1, 10],
+            m_vals=[0.05, 0.1],
+            parquet_path=None,
+        )
+        component_df = build_scenarios(
+            cluster_sizes=[10, 100],
+            detection_lookup_table=lookup,
+            k_vals=[0, 10, 100],
+            min_scenario_diverted_chips=0,
+            target_chips=1000,
+            steps=[0.0, 0.5, 1.0],
+            output_parquet_path=None,
+        )
+        from inspection_costs_stage2 import add_cost_value_columns as _add_costs
+        scenario_df = _add_costs(_derive_scenario_summary_from_components(component_df))
+
+        inline_rules = inspection_costs_stage3._write_relationship_code_rules_from_dataframes(
+            scenario_df=scenario_df,
+            scenario_component_df=component_df,
+            output_csv_path=tmp_path / "rules_inline.csv",
+            label="inline",
+        )
+        precomputed_summary = inspection_costs_stage3._summarize_components_by_scenario(component_df)
+        precomputed_rules = inspection_costs_stage3._write_relationship_code_rules_from_dataframes(
+            scenario_df=scenario_df,
+            scenario_component_df=component_df,
+            output_csv_path=tmp_path / "rules_precomputed.csv",
+            label="precomputed",
+            component_summary_df=precomputed_summary,
+        )
+
+        pd.testing.assert_frame_equal(inline_rules, precomputed_rules)
+
+
 # ---------------------------------------------------------------------------
 # Workflow-entry unit tests
 # ---------------------------------------------------------------------------
@@ -928,18 +1180,38 @@ class TestEndToEndWorkflow:
             assert isinstance(result[key], pd.DataFrame), key
             assert not result[key].empty, key
 
+    @staticmethod
+    def _k_option_count(cluster_size, k_vals=(0, 10, 100)):
+        """Replicate the per-component K filter used by build_scenarios."""
+        return len(
+            [
+                k
+                for k in k_vals
+                if k <= cluster_size
+                and (
+                    k == 0
+                    or k >= inspection_costs.MIN_DIVERTED_CHIPS
+                    or k == cluster_size
+                )
+            ]
+        )
+
     def test_expected_scenario_counts(self, workflow_result):
         _tmp_path, result = workflow_result
-        # 3 mixes x 2 smuggling shares:
-        # N10-C100 (2 K x 3 inspected = 6 scenarios per share),
-        # N10-C50_N100-C5 (2x2 K x 3x3 inspected = 36 per share),
-        # N100-C10 (2 K x 3 inspected = 6 per share).
+        # 3 mixes x 2 smuggling shares, with 3 inspected options per component:
+        # N10-C100 (k10 K x 3 inspected scenarios per share),
+        # N10-C50_N100-C5 (k10*k100 K x 3x3 inspected per share),
+        # N100-C10 (k100 K x 3 inspected per share).
+        k10 = self._k_option_count(10)
+        k100 = self._k_option_count(100)
+        expected_scenarios = 2 * (k10 * 3 + k10 * k100 * 9 + k100 * 3)
+        # Component rows: one per scenario for single-component mixes, two for the mixed one.
+        expected_component_rows = 2 * (k10 * 3 * 1 + k10 * k100 * 9 * 2 + k100 * 3 * 1)
         final_df = result["final_df"]
         component_df = result["scenario_component_df"]
-        assert len(final_df) == 96
-        assert component_df[COLUMN_NAMES["scenario_id"]].nunique() == 96
-        # 2 shares x (6*1 + 36*2 + 6*1) component rows.
-        assert len(component_df) == 168
+        assert len(final_df) == expected_scenarios
+        assert component_df[COLUMN_NAMES["scenario_id"]].nunique() == expected_scenarios
+        assert len(component_df) == expected_component_rows
 
     def test_mixes_used_csv(self, workflow_result):
         tmp_path, _result = workflow_result
@@ -970,17 +1242,23 @@ class TestEndToEndWorkflow:
         totals = summary_df.loc[
             summary_df[COLUMN_NAMES["relationship_code"]] == "Total"
         ]
+        k10 = self._k_option_count(10)
+        k100 = self._k_option_count(100)
+        expected_scenarios = 2 * (k10 * 3 + k10 * k100 * 9 + k100 * 3)
         assert len(totals) == 2  # one per PLV variant
         assert (
-            totals[COLUMN_NAMES["value_per_cost_scenario_count"]] == 96
+            totals[COLUMN_NAMES["value_per_cost_scenario_count"]] == expected_scenarios
         ).all()
 
     def test_perfect_information_subset(self, workflow_result):
         _tmp_path, result = workflow_result
         final_df = result["final_df"]
         perfect_df = result["perfect_information_final_df"]
-        # One scenario per (mix, K combo, smuggling share): 2 x (2 + 4 + 2) groups.
-        assert len(perfect_df) == 16
+        # One scenario per (mix, K combo, smuggling share).
+        k10 = self._k_option_count(10)
+        k100 = self._k_option_count(100)
+        expected_groups = 2 * (k10 + k10 * k100 + k100)
+        assert len(perfect_df) == expected_groups
         assert set(perfect_df[COLUMN_NAMES["scenario_id"]]) <= set(
             final_df[COLUMN_NAMES["scenario_id"]]
         )
