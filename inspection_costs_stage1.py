@@ -27,6 +27,7 @@ from inspection_costs import (
     SCENARIOS_PARQUET_PATH,
     SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS,
     MIN_SCENARIO_DIVERTED_CHIPS,
+    MIN_SCENARIO_TOTAL_TESTS,
     TARGET_CHIPS,
     _as_float_list,
     _format_column_preview,
@@ -462,6 +463,7 @@ def build_scenarios(
     detection_lookup_table: pd.DataFrame,
     k_vals: Iterable[int],
     min_scenario_diverted_chips: int = MIN_SCENARIO_DIVERTED_CHIPS,
+    min_scenario_total_tests: int = MIN_SCENARIO_TOTAL_TESTS,
     min_clusters_by_size: Optional[dict[int, int]] = None,
     share_of_clusters_with_smuggling_vals: Iterable[float] = SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS,
     target_chips: int = TARGET_CHIPS,
@@ -475,6 +477,9 @@ def build_scenarios(
     min_scenario_diverted_chips = int(min_scenario_diverted_chips)
     if min_scenario_diverted_chips < 0:
         raise ValueError("build_scenarios: min_scenario_diverted_chips must be non-negative")
+    min_scenario_total_tests = int(min_scenario_total_tests)
+    if min_scenario_total_tests < 0:
+        raise ValueError("build_scenarios: min_scenario_total_tests must be non-negative")
     share_of_clusters_with_smuggling_vals = _as_float_list(share_of_clusters_with_smuggling_vals)
     _workflow_log(
         "Stage 1 / Scenarios",
@@ -521,6 +526,7 @@ def build_scenarios(
                 detection_grouped=detection_grouped,
                 k_options_by_cluster_size=k_options_by_cluster_size,
                 min_scenario_diverted_chips=min_scenario_diverted_chips,
+                min_scenario_total_tests=min_scenario_total_tests,
                 share_of_clusters_with_smuggling_vals=share_of_clusters_with_smuggling_vals,
                 target_chips=target_chips,
             )
@@ -554,6 +560,7 @@ def build_scenarios(
             detection_grouped=detection_grouped,
             k_options_by_cluster_size=k_options_by_cluster_size,
             min_scenario_diverted_chips=min_scenario_diverted_chips,
+            min_scenario_total_tests=min_scenario_total_tests,
             share_of_clusters_with_smuggling_vals=share_of_clusters_with_smuggling_vals,
             target_chips=target_chips,
         )
@@ -609,6 +616,7 @@ def _build_inspected_combo_cache(
     num_clusters_arr: np.ndarray,
     num_smug_arr: np.ndarray,
     component_chips_arr: np.ndarray,
+    min_scenario_total_tests: int,
 ) -> dict[str, object]:
     component_count = len(signature)
     option_arrays = [np.asarray(options, dtype=np.int64) for options in signature]
@@ -621,6 +629,10 @@ def _build_inspected_combo_cache(
         [option_arrays[component][option_index_grid[:, component]] for component in range(component_count)],
         axis=1,
     )
+    combo_mask = (inspected_combos * num_clusters_arr).sum(axis=1) >= min_scenario_total_tests
+    option_index_grid = option_index_grid[combo_mask]
+    inspected_combos = inspected_combos[combo_mask]
+    combo_count = inspected_combos.shape[0]
 
     combo_rows = inspected_combos.tolist()
     inspected_combo_strs = ["-".join(map(str, row)) for row in combo_rows]
@@ -689,6 +701,7 @@ def _build_mix_records(
     detection_grouped: dict[tuple[int, int], dict[int, dict[float, tuple[float, float, float, float]]]],
     k_options_by_cluster_size: dict[int, list[int]],
     min_scenario_diverted_chips: int,
+    min_scenario_total_tests: int,
     share_of_clusters_with_smuggling_vals: Iterable[float],
     target_chips: int,
 ) -> tuple[Optional[dict[str, np.ndarray]], int, int]:
@@ -755,7 +768,6 @@ def _build_mix_records(
                     break
                 chips_inspected_per_cluster_options_per_component.append(tuple(sorted(chips_inspected_per_cluster_options)))
             else:
-                unique_k_combos.add(k_combo)
                 signature = tuple(chips_inspected_per_cluster_options_per_component)
                 inspected_cache = inspected_cache_by_signature.get(signature)
                 if inspected_cache is None:
@@ -765,9 +777,13 @@ def _build_mix_records(
                         num_clusters_arr=num_clusters_arr,
                         num_smug_arr=num_smug_arr,
                         component_chips_arr=component_chips_arr,
+                        min_scenario_total_tests=min_scenario_total_tests,
                     )
                     inspected_cache_by_signature[signature] = inspected_cache
-                    unique_chips_inspected_per_cluster_combos.update(inspected_cache["inspected_combo_tuples"])
+                if inspected_cache["combo_count"] == 0:
+                    continue
+                unique_k_combos.add(k_combo)
+                unique_chips_inspected_per_cluster_combos.update(inspected_cache["inspected_combo_tuples"])
 
                 # Look up the four detection metrics for every component option, padded into one matrix per metric.
                 max_option_count = max(len(options) for options in signature)

@@ -1,13 +1,13 @@
 PLV Type,Relationship Code,Relationship Description,Scenario Count,Rule Component Index,Feature Group,Feature,Distinct Values,Observed Min,Observed Max,Rule Component
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,1,Scenario Summary,Total Clusters in Mix,35,4377.0,136002.0,4377 <= Total Clusters in Mix <= 136002
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,2,Scenario Summary,Total Tests,18276,0.0,2217000.0,0 <= Total Tests <= 2217000
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,3,Scenario Summary,Bad Records (K),4443,114000.0,1555550.0,114000 <= Bad Records (K) <= 1555550
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,4,Scenario Summary,Number of Clusters with Smuggling,70,876.0,68002.0,876 <= Number of Clusters with Smuggling <= 68002
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,5,Scenario Summary,Share Diverted,4443,0.038,0.5185166666666666,0.038 <= Share Diverted <= 0.518517
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,6,Combo Derived,K Combo,6,0.0,100000.0,0 <= K Combo <= 100000
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,7,Combo Derived,Chips Inspected Per Cluster Combo,5,0.0,1000.0,0 <= Chips Inspected Per Cluster Combo <= 1000
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,8,Component Summary,component_cluster_size,3,10.0,100000.0,10 <= component_cluster_size <= 100000
-PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9079754,9,Component Summary,component_cluster_count,39,4.0,131240.0,4 <= component_cluster_count <= 131240
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,1,Scenario Summary,Total Clusters in Mix,35,4377.0,136002.0,4377 <= Total Clusters in Mix <= 136002
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,2,Scenario Summary,Total Tests,18275,4.0,2217000.0,4 <= Total Tests <= 2217000
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,3,Scenario Summary,Bad Records (K),4443,114000.0,1555550.0,114000 <= Bad Records (K) <= 1555550
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,4,Scenario Summary,Number of Clusters with Smuggling,70,876.0,68002.0,876 <= Number of Clusters with Smuggling <= 68002
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,5,Scenario Summary,Share Diverted,4443,0.038,0.5185166666666666,0.038 <= Share Diverted <= 0.518517
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,6,Combo Derived,K Combo,6,0.0,100000.0,0 <= K Combo <= 100000
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,7,Combo Derived,Chips Inspected Per Cluster Combo,5,0.0,1000.0,0 <= Chips Inspected Per Cluster Combo <= 1000
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,8,Component Summary,component_cluster_size,3,10.0,100000.0,10 <= component_cluster_size <= 100000
+PLV Renting,a,Physical max value per cost is less than PLV Renting min value per cost,9070401,9,Component Summary,component_cluster_count,39,4.0,131240.0,4 <= component_cluster_count <= 131240
 PLV Renting,b,Physical max value per cost is within PLV Renting range and Physical min value per cost is below PLV Renting min value per cost,714606,1,Scenario Summary,Total Clusters in Mix,20,4377.0,17886.0,4377 <= Total Clusters in Mix <= 17886
 PLV Renting,b,Physical max value per cost is within PLV Renting range and Physical min value per cost is below PLV Renting min value per cost,714606,2,Scenario Summary,Total Tests,6631,4.0,2217000.0,4 <= Total Tests <= 2217000
 PLV Renting,b,Physical max value per cost is within PLV Renting range and Physical min value per cost is below PLV Renting min value per cost,714606,3,Scenario Summary,Bad Records (K),2056,114000.0,1555500.0,114000 <= Bad Records (K) <= 1555500
@@ -26,15 +26,15 @@ PLV Renting,c,Physical min and max value per cost are both within PLV Renting ra
 PLV Renting,c,Physical min and max value per cost are both within PLV Renting range,747140,7,Combo Derived,Chips Inspected Per Cluster Combo,5,0.0,1000.0,0 <= Chips Inspected Per Cluster Combo <= 1000
 PLV Renting,c,Physical min and max value per cost are both within PLV Renting range,747140,8,Component Summary,component_cluster_size,2,100.0,100000.0,100 <= component_cluster_size <= 100000
 PLV Renting,c,Physical min and max value per cost are both within PLV Renting range,747140,9,Component Summary,component_cluster_count,20,4.0,8840.0,4 <= component_cluster_count <= 8840
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,1,Scenario Summary,Total Clusters in Mix,35,4377.0,136002.0,4377 <= Total Clusters in Mix <= 136002
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,2,Scenario Summary,Total Tests,19018,0.0,2217000.0,0 <= Total Tests <= 2217000
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,3,Scenario Summary,Bad Records (K),4443,114000.0,1555550.0,114000 <= Bad Records (K) <= 1555550
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,4,Scenario Summary,Number of Clusters with Smuggling,70,876.0,68002.0,876 <= Number of Clusters with Smuggling <= 68002
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,5,Scenario Summary,Share Diverted,4443,0.038,0.5185166666666666,0.038 <= Share Diverted <= 0.518517
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,6,Combo Derived,K Combo,6,0.0,100000.0,0 <= K Combo <= 100000
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,7,Combo Derived,Chips Inspected Per Cluster Combo,5,0.0,1000.0,0 <= Chips Inspected Per Cluster Combo <= 1000
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,8,Component Summary,component_cluster_size,3,10.0,100000.0,10 <= component_cluster_size <= 100000
-PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9714263,9,Component Summary,component_cluster_count,39,4.0,131240.0,4 <= component_cluster_count <= 131240
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,1,Scenario Summary,Total Clusters in Mix,35,4377.0,136002.0,4377 <= Total Clusters in Mix <= 136002
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,2,Scenario Summary,Total Tests,19017,4.0,2217000.0,4 <= Total Tests <= 2217000
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,3,Scenario Summary,Bad Records (K),4443,114000.0,1555550.0,114000 <= Bad Records (K) <= 1555550
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,4,Scenario Summary,Number of Clusters with Smuggling,70,876.0,68002.0,876 <= Number of Clusters with Smuggling <= 68002
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,5,Scenario Summary,Share Diverted,4443,0.038,0.5185166666666666,0.038 <= Share Diverted <= 0.518517
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,6,Combo Derived,K Combo,6,0.0,100000.0,0 <= K Combo <= 100000
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,7,Combo Derived,Chips Inspected Per Cluster Combo,5,0.0,1000.0,0 <= Chips Inspected Per Cluster Combo <= 1000
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,8,Component Summary,component_cluster_size,3,10.0,100000.0,10 <= component_cluster_size <= 100000
+PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,9704910,9,Component Summary,component_cluster_count,39,4.0,131240.0,4 <= component_cluster_count <= 131240
 PLV Owning,b,Physical max value per cost is within PLV Owning range and Physical min value per cost is below PLV Owning min value per cost,820198,1,Scenario Summary,Total Clusters in Mix,16,4377.0,10173.0,4377 <= Total Clusters in Mix <= 10173
 PLV Owning,b,Physical max value per cost is within PLV Owning range and Physical min value per cost is below PLV Owning min value per cost,820198,2,Scenario Summary,Total Tests,5256,4.0,1683300.0,4 <= Total Tests <= 1683300
 PLV Owning,b,Physical max value per cost is within PLV Owning range and Physical min value per cost is below PLV Owning min value per cost,820198,3,Scenario Summary,Bad Records (K),1842,114000.0,1555500.0,114000 <= Bad Records (K) <= 1555500

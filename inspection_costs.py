@@ -22,6 +22,7 @@ PLV_OWNING_COST_PER_TOTAL_CHIP = (3_093_801 / TARGET_CHIPS, 28_715_814 / TARGET_
 
 MIN_DIVERTED_CHIPS = 100  # Minimum allowed diverted-chip count (K) for positive-K components of each scenario.
 MIN_SCENARIO_DIVERTED_CHIPS = 114_000  # Minimum number of total diverted chips across a full scenario.
+MIN_SCENARIO_TOTAL_TESTS = 1  # Minimum total number of tests (via physical inspections) across a full scenario.
 PLV_DISCOUNT_RATE = 0.5  # Fractional multiplier applied to PLV value.
 PHYSICAL_INSPECTION_M = 0.05  # Failure probability for a physical inspection test.
 PLV_M = 0.1  # Failure probability for a PLV test.
@@ -61,6 +62,7 @@ WORKFLOW_CONSTANT_NAMES_THROUGH_ALL_M_VALS = (
     "PLV_OWNING_COST_PER_TOTAL_CHIP",
     "MIN_DIVERTED_CHIPS",
     "MIN_SCENARIO_DIVERTED_CHIPS",
+    "MIN_SCENARIO_TOTAL_TESTS",
     "PLV_DISCOUNT_RATE",
     "PHYSICAL_INSPECTION_M",
     "PLV_M",
@@ -359,6 +361,7 @@ def run_inspection_costs_workflow(
     cluster_sizes: Iterable[int] = CLUSTER_SIZES,
     k_vals: Iterable[int] = K_VALS,
     min_scenario_diverted_chips: int = MIN_SCENARIO_DIVERTED_CHIPS,
+    min_scenario_total_tests: int = MIN_SCENARIO_TOTAL_TESTS,
     chips_inspected_per_cluster_vals: Iterable[int] = CHIPS_INSPECTED_PER_CLUSTER_VALS,
     extra_min_clusters_by_size: Optional[dict[int, int]] = ADDITIONAL_MIN_CLUSTERS_BY_SIZE,
     share_of_clusters_with_smuggling_vals: Iterable[float] = SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS,
@@ -462,6 +465,7 @@ def run_inspection_costs_workflow(
         detection_lookup_table=detection_lookup_table,
         k_vals=k_vals,
         min_scenario_diverted_chips=min_scenario_diverted_chips,
+        min_scenario_total_tests=min_scenario_total_tests,
         min_clusters_by_size=min_clusters_by_size,
         share_of_clusters_with_smuggling_vals=share_of_clusters_with_smuggling_vals,
         target_chips=target_chips,

@@ -71,6 +71,7 @@ class TestWorkflowOutput:
             "PLV_OWNING_COST_PER_TOTAL_CHIP",
             "MIN_DIVERTED_CHIPS",
             "MIN_SCENARIO_DIVERTED_CHIPS",
+            "MIN_SCENARIO_TOTAL_TESTS",
             "PLV_DISCOUNT_RATE",
             "PHYSICAL_INSPECTION_M",
             "PLV_M",
@@ -327,7 +328,7 @@ class TestMixHelpers:
 
 
 class TestBuildScenarios:
-    def _build(self, min_scenario_diverted_chips):
+    def _build(self, min_scenario_diverted_chips, min_scenario_total_tests=inspection_costs.MIN_SCENARIO_TOTAL_TESTS):
         lookup = build_detection_lookup_table(
             cluster_sizes=[10],
             K_vals=[0, 10],
@@ -340,6 +341,7 @@ class TestBuildScenarios:
             detection_lookup_table=lookup,
             k_vals=[0, 10],
             min_scenario_diverted_chips=min_scenario_diverted_chips,
+            min_scenario_total_tests=min_scenario_total_tests,
             target_chips=100,
             steps=[0.0, 1.0],
             output_parquet_path=None,
@@ -348,8 +350,9 @@ class TestBuildScenarios:
     def test_in_memory_columns_and_invariants(self):
         df = self._build(min_scenario_diverted_chips=0)
         assert list(df.columns) == SCENARIO_COLUMNS
-        # One mix, 2 smuggling shares x 2 K options x 2 inspected options.
-        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 8
+        # One mix, 2 smuggling shares x 2 K options x 1 nonzero inspected option.
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
+        assert (df[COLUMN_NAMES["total_tests"]] >= inspection_costs.MIN_SCENARIO_TOTAL_TESTS).all()
         # Single-component mix: one row per scenario, totalling target chips.
         assert (df[COLUMN_NAMES["total_component_chips"]] == 100).all()
         assert (
@@ -360,8 +363,16 @@ class TestBuildScenarios:
 
     def test_min_scenario_diverted_chips_filters_zero_k(self):
         df = self._build(min_scenario_diverted_chips=1)
-        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 2
         assert (df[COLUMN_NAMES["bad_records"]] == 10).all()
+
+    def test_min_scenario_total_tests_zero_preserves_zero_test_scenarios(self):
+        df = self._build(
+            min_scenario_diverted_chips=0,
+            min_scenario_total_tests=0,
+        )
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 8
+        assert (df[COLUMN_NAMES["total_tests"]] == 0).any()
 
     def test_share_options_create_distinct_scenarios(self):
         lookup = build_detection_lookup_table(
@@ -401,6 +412,15 @@ class TestBuildScenarios:
                 detection_lookup_table=lookup,
                 k_vals=[0],
                 min_scenario_diverted_chips=-1,
+                output_parquet_path=None,
+            )
+
+        with pytest.raises(ValueError, match="non-negative"):
+            build_scenarios(
+                cluster_sizes=[10],
+                detection_lookup_table=lookup,
+                k_vals=[0],
+                min_scenario_total_tests=-1,
                 output_parquet_path=None,
             )
 
@@ -526,7 +546,7 @@ class TestBuildScenarios:
         )
 
         assert read_parquet_calls == [output_parquet_path]
-        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 8
+        assert df[COLUMN_NAMES["scenario_id"]].nunique() == 4
 
 
 # ---------------------------------------------------------------------------
@@ -1198,15 +1218,16 @@ class TestEndToEndWorkflow:
 
     def test_expected_scenario_counts(self, workflow_result):
         _tmp_path, result = workflow_result
-        # 3 mixes x 2 smuggling shares, with 3 inspected options per component:
-        # N10-C100 (k10 K x 3 inspected scenarios per share),
-        # N10-C50_N100-C5 (k10*k100 K x 3x3 inspected per share),
-        # N100-C10 (k100 K x 3 inspected per share).
+        # 3 mixes x 2 smuggling shares, with all-zero inspected combinations
+        # filtered by the default minimum total-test constraint:
+        # N10-C100 (k10 K x 2 inspected scenarios per share),
+        # N10-C50_N100-C5 (k10*k100 K x 8 inspected scenarios per share),
+        # N100-C10 (k100 K x 2 inspected per share).
         k10 = self._k_option_count(10)
         k100 = self._k_option_count(100)
-        expected_scenarios = 2 * (k10 * 3 + k10 * k100 * 9 + k100 * 3)
+        expected_scenarios = 2 * (k10 * 2 + k10 * k100 * 8 + k100 * 2)
         # Component rows: one per scenario for single-component mixes, two for the mixed one.
-        expected_component_rows = 2 * (k10 * 3 * 1 + k10 * k100 * 9 * 2 + k100 * 3 * 1)
+        expected_component_rows = 2 * (k10 * 2 * 1 + k10 * k100 * 8 * 2 + k100 * 2 * 1)
         final_df = result["final_df"]
         component_df = result["scenario_component_df"]
         assert len(final_df) == expected_scenarios
@@ -1244,7 +1265,7 @@ class TestEndToEndWorkflow:
         ]
         k10 = self._k_option_count(10)
         k100 = self._k_option_count(100)
-        expected_scenarios = 2 * (k10 * 3 + k10 * k100 * 9 + k100 * 3)
+        expected_scenarios = 2 * (k10 * 2 + k10 * k100 * 8 + k100 * 2)
         assert len(totals) == 2  # one per PLV variant
         assert (
             totals[COLUMN_NAMES["value_per_cost_scenario_count"]] == expected_scenarios
