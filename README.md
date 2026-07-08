@@ -174,6 +174,7 @@ The main assumptions are defined near the top of `inspection_costs.py`:
 - `PLV_OWNING_COST_PER_TOTAL_CHIP`: PLV owning cost range.
 - `MIN_DIVERTED_CHIPS`: Minimum diverted-chip count allowed for positive-`K` components of each scenario (`100`), except that `K = 0` and full diversion (`K = N`) are always allowed.
 - `MIN_SCENARIO_DIVERTED_CHIPS`: Minimum total diverted-chip count allowed across a full scenario.
+- `MIN_SCENARIO_TOTAL_TESTS`: Minimum total number of physical-inspection tests required across a full scenario.
 - `PLV_DISCOUNT_RATE`: Fractional multiplier applied to PLV value.
 - `PHYSICAL_INSPECTION_M`: Physical-inspection chip-level miss probability.
 - `PLV_M`: PLV chip-level miss probability.
