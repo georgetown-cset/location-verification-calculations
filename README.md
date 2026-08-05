@@ -1,11 +1,16 @@
 # Location Verification Inspection Cost Model
 
-This repository models the cost effectiveness of two approaches for detecting whether export controlled AI chips in a GPU cluster have been smuggled from their expected location:
+This repository models the cost-effectiveness of two approaches for detecting whether export-controlled AI chips in a GPU cluster have been smuggled from their expected location:
 
-- Physical inspections, where a limited number of chips in a cluster are tested directly.
-- Ping-based location verification (PLV), which uses the time delay for a 
+- Physical inspections, in which a limited number of chips in a cluster are tested directly.
+- Ping-based location verification (PLV), which uses network latency measurements to determine whether chips are in their expected locations.
 
 The model generates possible GPU cluster mixes, diversion scenarios, testing strategies, and detection probabilities. It then estimates costs, expected diverted chips identified, and value per cost for physical inspections and two PLV variants: renting landmark servers and owning landmark servers.
+
+## Reference Spreadsheets
+
+- [Input assumptions](https://docs.google.com/spreadsheets/d/1am0WdvZpuFG6utIuAuhwEXTmKz95NnN2xk1jcVQl2g8/edit?gid=1039123233#gid=1039123233)
+- [Saved outputs](https://docs.google.com/spreadsheets/d/1ZFIU5MujfCN5GhfOBgsdrAqQ5zoCh_aouVdx0OZHRpQ/edit?gid=565306659#gid=565306659)
 
 ## Model Overview
 
@@ -22,7 +27,7 @@ For each valid scenario, the pipeline computes:
 - Value per cost for physical inspection and PLV.
 - Relationship codes showing how physical-inspection value-per-cost ranges compare with each PLV range.
 
-The top-level entry point is `inspection_costs.py`. Running it executes all stages and writes cached parquet data plus CSV, text, and image outputs. Run from the repository root:
+The top-level entry point is `inspection_costs.py`. Running it executes all stages and writes cached Parquet data plus CSV, text, and image outputs. Run the following commands from the repository root:
 
 ```bash
 python3 -m pip install -r requirements.txt
@@ -35,7 +40,7 @@ The workflow clears and regenerates the cached model artifacts in `data/saved/`,
 
 ### Stage 0: GPU Cluster Bucket Counts
 
-`gpu_cluster_bucket_counts.py` downloads or reuses `data/gpu_clusters.csv` from Epoch AI's GPU cluster dataset, filters it to relevant non-U.S./non-China clusters, and counts unique clusters by chip-quantity bucket. Those counts become minimum constraints when generating possible cluster mixes.
+`gpu_cluster_bucket_counts.py` downloads or reuses `data/gpu_clusters.csv` from Epoch AI's GPU cluster dataset, filters it to relevant clusters outside the United States and China, and counts unique clusters by chip-quantity bucket. Those counts become minimum constraints when generating possible cluster mixes.
 
 The output is:
 
@@ -51,7 +56,7 @@ It:
 - Generates valid cluster mixes that sum to the target chip population.
 - Applies minimum cluster-count constraints from the GPU cluster bucket summary.
 - Expands each mix into scenario-component rows across smuggling and testing combinations.
-- Writes scenario-component parquet fragments to `data/scenario_components/`.
+- Writes scenario-component Parquet fragments to `data/scenario_components/`.
 
 Key outputs:
 
@@ -79,7 +84,7 @@ Key outputs:
 
 ### Stage 3: Summaries and Reports
 
-`inspection_costs_stage3.py` creates user-facing summaries from the costed scenario parquet files.
+`inspection_costs_stage3.py` creates user-facing summaries from the costed scenario Parquet files.
 
 It:
 
@@ -123,7 +128,7 @@ Key outputs:
 │   │   ├── scenarios_costed.parquet
 │   │   └── scenarios_costed_perfect_information.parquet
 │   └── scenario_components/
-│       └── ... parquet fragments by cluster-mix shard
+│       └── ... Parquet fragments by cluster-mix shard
 └── output/
     ├── gpu_cluster_bucket_counts.csv
     ├── inspection_cost_assumptions.txt
@@ -144,17 +149,17 @@ Key outputs:
 
 - `inspection_costs.py`: Main workflow entry point and shared constants. It coordinates all stages and defines output paths.
 - `inspection_costs_stage1.py`: Builds detection lookup table, cluster mixes, scenarios, and scenario components.
-- `inspection_costs_stage2.py`: Estimates value of PLV and physical inspections for each scenario component. Aggregates scenario components to the scenario level. Then costs each scenario.
-- `inspection_costs_stage3.py`: Builds three types of outputs. Counts the number of scenarios that have each relationship code (i.e., relationship_summary). Builds box plots that show expected value and value-per-cost by relationship code. Identifies bounds of input variables for scenarios grouped by relationship code (i.e., relationship_code_rules)
+- `inspection_costs_stage2.py`: Estimates the value of PLV and physical inspections for each scenario component, aggregates components to the scenario level, and calculates the cost of each scenario.
+- `inspection_costs_stage3.py`: Builds three types of outputs: counts of scenarios by relationship code (`relationship_summary`), box plots showing expected value and value per cost by relationship code, and input-variable bounds for scenarios grouped by relationship code (`relationship_code_rules`).
 - `additional/relationship_model_report.py`: Legacy standalone report generator that is no longer wired into the workflow.
-- `gpu_cluster_bucket_counts.py`: Downloads, filters, and buckets EpochAI’s GPU clusters dataset. These calculations are used to exclude unviable cluster mixes.
+- `gpu_cluster_bucket_counts.py`: Downloads, filters, and buckets Epoch AI's GPU cluster dataset. These calculations are used to exclude unviable cluster mixes.
 - `additional/probability_check.py`: Local probability-check script.
 
 ### Data Directories
 
 - `data/gpu_clusters.csv`: Cached source GPU cluster dataset.
-- `data/scenario_components/`: Generated parquet dataset containing scenario-component rows. Files are sharded by cluster-mix prefix.
-- `data/saved/`: Generated intermediate parquet files used to avoid recomputing each stage from raw components.
+- `data/scenario_components/`: Generated Parquet dataset containing scenario-component rows. Files are sharded by cluster-mix prefix.
+- `data/saved/`: Generated intermediate Parquet files used to avoid recomputing each stage from raw components.
 
 ### Output Directories
 
@@ -194,7 +199,7 @@ The model uses Python with:
 - `pyarrow`
 - `pytest`
 
-`pyarrow` is required for parquet read/write support. The GPU cluster bucket script also uses Python's standard-library `urllib` to download the source CSV when `data/gpu_clusters.csv` is not already present.
+`pyarrow` is required for Parquet read/write support. The GPU cluster bucket script also uses Python's standard-library `urllib` to download the source CSV when `data/gpu_clusters.csv` is not already present.
 
 Install the runtime dependencies from a clean environment with:
 
