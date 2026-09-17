@@ -34,12 +34,12 @@ SHARE_OF_CLUSTERS_WITH_SMUGGLING_VALS = [0.2, 0.5]  # Shares of clusters in a sc
 CHIPS_INSPECTED_PER_CLUSTER_VALS = [0, 1, 10, 100, 1_000]  # Chips inspected per cluster.
 
 ADDITIONAL_MIN_CLUSTERS_BY_SIZE: dict[int, int] = {
-    # One relevant cluster is present in Epoch AI's Frontier Data Centers but missing from Epoch's GPU Clusters dataset.
-    # Relevant cluster means a GPU cluster that is:
-        # (a) not located in the U.S. or China, 
-        # (b) is not owned by a U.S. cloud service provider or AI lab, 
-        # (c) is currently operational or expected to be operational by the end of 2026, and
-        # (d) deploys (or will deploy) non-Chinese, export-controlled AI chips
+    # Add relevant AI chip clusters that are present in Epoch AI's "AI Data Centers" dataset but missing from Epoch's "GPU Clusters" dataset.
+    # Relevant clusters:
+        # (a) are not located in the U.S. or China, 
+        # (b) are not owned by a U.S. cloud service provider or AI lab, 
+        # (c) are currently operational or expected to be operational by the end of 2026, and
+        # (d) deploy (or will deploy) non-Chinese, export-controlled AI chips
     # Missing two clusters (Updated Sept 16, 2026): DayOne Nusajaya, Southgate Melbourne
     # Epoch AI estimates that:
         # DayOne Nusajaya will have ~252k export-controlled AI chips (NVIDIA H100 and B300) by Oct 2026.
