@@ -7,8 +7,8 @@ PLV Renting,e,Physical min value per cost is greater than PLV Renting max value 
 PLV Renting,f,Physical value per cost range spans both sides of PLV Renting range,0
 PLV Renting,Total,All scenarios,9353
 PLV Owning,a,Physical max value per cost is less than PLV Owning min value per cost,6564
-PLV Owning,b,Physical max value per cost is within PLV Owning range and Physical min value per cost is below PLV Owning min value per cost,2603
-PLV Owning,c,Physical min and max value per cost are both within PLV Owning range,186
+PLV Owning,b,Physical max value per cost is within PLV Owning range and Physical min value per cost is below PLV Owning min value per cost,2588
+PLV Owning,c,Physical min and max value per cost are both within PLV Owning range,201
 PLV Owning,d,Physical min value per cost is within PLV Owning range and Physical max value per cost is above PLV Owning max value per cost,0
 PLV Owning,e,Physical min value per cost is greater than PLV Owning max value per cost,0
 PLV Owning,f,Physical value per cost range spans both sides of PLV Owning range,0
